@@ -1,0 +1,62 @@
+[project]
+name = "nova"
+version = "0.1.0"
+description = "CLI + library for building consistent agentic systems through shared context and composable bundles"
+readme = "README.md"
+requires-python = ">=3.13"
+
+dependencies = ["loguru>=0.7.3", "pydantic>=2.12.3", "pydantic-settings>=2.11.0"]
+
+[dependency-groups]
+cli = ["typer>=0.19.2"]
+
+dev = [
+  "pyright>=1.1.406",
+  "pytest>=8.4.2",
+  "pytest-asyncio>=1.2.0",
+]
+
+[project.scripts]
+nova = "nova.cli.main:main"
+
+[tool.uv]
+package = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "ANN", # flake8-annotations
+  "UP",  # pyupgrade
+  "N",   # pep8-naming
+  "PL",  # pylint
+  "RUF", # Ruff-specific rules
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+  "PLR2004", # Allow magic numbers in test files
+  "PLR0913", # Allow many arguments in test helper functions
+  "ANN401",  # Allow Any type in test helpers
+  "ANN003",  # Allow missing kwargs annotations in test helpers
+]
+
+"__init__.py" = ["F401"]
+"src/nova/utils/functools/models/option.py" = ["UP046", "UP047"]
+"src/nova/utils/functools/models/result.py" = ["UP046", "UP047"]
+
+
+[tool.pytest.ini_options]
+
+minversion = "6.0"
+addopts = "-ra -q"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = ["e2e: mark tests as end-to-end tests"]
