@@ -6,6 +6,7 @@ review_status: "draft"
 ---
 
 # Feature 2: Marketplace & Bundle Distribution
+
 **Priority:** P0 (Must Have)
 **Status:** Not Started
 
@@ -13,8 +14,9 @@ review_status: "draft"
 Marketplace system for discovering, distributing, and managing Nova bundles. Takes inspiration from Claude Code's manifest-based marketplace approach. Supports both public and private (org-internal) marketplaces. Enables bundle authors to publish bundles and users to discover and install them. Includes both Nova Core library support and Nova CLI commands for managing marketplaces.
 
 **Functional Requirements:**
+
 - FR-2.1: Manifest-based catalog for listing available bundles
-- FR-2.2: Support multiple marketplace sources (public, org-internal, custom)
+- FR-2.2: Support multiple marketplaces
 - FR-2.3: Nova CLI: Add marketplace source
 - FR-2.4: Nova CLI: Remove marketplace source
 - FR-2.5: Nova CLI: List configured marketplace sources
@@ -27,6 +29,7 @@ Marketplace system for discovering, distributing, and managing Nova bundles. Tak
 - FR-2.12: Marketplace configuration in Nova config (which marketplaces to use)
 
 **Acceptance Criteria:**
+
 - [ ] Can configure marketplace sources in Nova config
 - [ ] Can add marketplace source via CLI
 - [ ] Can remove marketplace source via CLI
@@ -39,9 +42,11 @@ Marketplace system for discovering, distributing, and managing Nova bundles. Tak
 - [ ] Git-based bundle references work (can install from git URL)
 
 **Dependencies:**
+
 - Feature 1: Config Management (marketplace config)
 
 **Open Questions:**
+
 - [ ] Marketplace manifest format and schema?
 - [ ] How to handle marketplace authentication (for private/org marketplaces)?
 - [ ] Centralized registry vs. decentralized (git-only)?

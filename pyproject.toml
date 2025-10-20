@@ -5,7 +5,12 @@ description = "CLI + library for building consistent agentic systems through sha
 readme = "README.md"
 requires-python = ">=3.13"
 
-dependencies = ["loguru>=0.7.3", "pydantic>=2.12.3", "pydantic-settings>=2.11.0"]
+dependencies = [
+    "loguru>=0.7.3",
+    "pydantic>=2.12.3",
+    "pydantic-settings>=2.11.0",
+    "pyyaml>=6.0.3",
+]
 
 [dependency-groups]
 cli = ["typer>=0.19.2"]
