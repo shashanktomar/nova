@@ -19,6 +19,7 @@ dev = [
   "pyright>=1.1.406",
   "pytest>=8.4.2",
   "pytest-asyncio>=1.2.0",
+  "pytest-cov>=7.0.0",
 ]
 
 [project.scripts]
@@ -48,14 +49,22 @@ select = [
 "tests/**/*.py" = [
   "PLR2004", # Allow magic numbers in test files
   "PLR0913", # Allow many arguments in test helper functions
-  "ANN401",  # Allow Any type in test helpers
-  "ANN003",  # Allow missing kwargs annotations in test helpers
+  "ANN",     # Allow missing type annotations in tests
+  "PLW0602", # Allow using global without assignment (pytest fixtures)
+  "E501",    # Allow long lines in tests
+  "RUF059",  # Allow unused unpacked variables in tests
+]
+
+"src/nova/settings.py" = [
+  "PLW0603", # Allow global statement for singleton pattern
 ]
 
 "__init__.py" = ["F401"]
 "src/nova/utils/functools/models/option.py" = ["UP046", "UP047"]
 "src/nova/utils/functools/models/result.py" = ["UP046", "UP047"]
 
+[tool.pyright]
+exclude = ["tests", ".venv", ".tmp", "**/__pycache__"]
 
 [tool.pytest.ini_options]
 

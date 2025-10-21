@@ -38,7 +38,6 @@ Marketplace system for discovering, distributing, and managing Nova bundles. Tak
 - [ ] Can install bundle from marketplace by name/reference
 - [ ] Can publish bundle to marketplace
 - [ ] Bundle versioning works (can install specific versions)
-- [ ] Can use both public and private marketplaces simultaneously
 - [ ] Git-based bundle references work (can install from git URL)
 
 **Dependencies:**

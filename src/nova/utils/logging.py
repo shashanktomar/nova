@@ -7,7 +7,7 @@ from loguru import logger
 from pydantic import Field
 from pydantic.dataclasses import dataclass
 
-from nova.config import AppInfo
+from nova.settings import AppInfo
 
 type Logger = "loguru.Logger"
 

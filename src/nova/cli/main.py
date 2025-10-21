@@ -1,15 +1,22 @@
+from __future__ import annotations
+
 import typer
 
-from nova.cli.command import hello
+from .commands import config as config_commands
 
-app = typer.Typer()
+app = typer.Typer(help="Nova command-line interface.")
+app.add_typer(config_commands.app, name="config")
 
-app.command()(hello)
+
+@app.callback(invoke_without_command=True)
+def _root_callback(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit()
 
 
 def main() -> None:
+    """Entrypoint for the nova CLI."""
     app()
 
 
-if __name__ == "__main__":
-    main()

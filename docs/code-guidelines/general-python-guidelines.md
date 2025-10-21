@@ -113,6 +113,8 @@ def get_instrument(ticker: str) -> Union[Instrument, None]:
     pass
 ```
 
+For optional values, use the same syntax (`Instrument | None`) instead of `Optional[Instrument]`. The `typing.Optional` helper is considered outdated in this codebase.
+
 ### Protocol Usage
 
 Use Protocol for structural typing when you need interface-like behavior:
@@ -138,3 +140,52 @@ Follow the principle: **"Make simple things simple, and complex things possible.
 - Add complexity only when requirements demand it
 - Avoid over-engineering for hypothetical future needs
 - Document when and why complexity is necessary
+
+### Early Returns (Guard Clauses)
+
+**Prefer early returns to reduce nesting and improve readability.**
+
+Use guard clauses to handle edge cases and error conditions first, then proceed with the main logic.
+
+```python
+# BAD - Nested if statements
+def process_user(user_id: str) -> dict | None:
+    if user_id:
+        user = get_user(user_id)
+        if user:
+            if user.is_active:
+                return user.to_dict()
+            else:
+                return None
+        else:
+            return None
+    else:
+        return None
+
+# GOOD - Early returns (guard clauses)
+def process_user(user_id: str) -> dict | None:
+    if not user_id:
+        return None
+
+    user = get_user(user_id)
+    if not user:
+        return None
+
+    if not user.is_active:
+        return None
+
+    return user.to_dict()
+```
+
+**Benefits:**
+- Reduces cognitive load by handling edge cases upfront
+- Makes the "happy path" more visible
+- Reduces nesting depth
+- Easier to understand control flow
+
+**When to use:**
+- Validation checks
+- Null/None checks
+- Error conditions
+- Permission checks
+- Special case handling

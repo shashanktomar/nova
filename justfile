@@ -22,9 +22,9 @@ sync:
 ################## CLI Commands ###############
 ###############################################
 
-# Run the hello world command
-hello:
-    uv run nova
+# Run the nova cli command
+nova *args:
+    uv run nova {{args}}
 
 ###############################################
 ############# Testing and Linting #############

@@ -1,942 +1,416 @@
-# Feature 1: Config Management - Implementation Specification
+---
+status: completed
+priority: p0
+updated: "2025-10-21"
+implemented: "2025-10-21"
+review_status: "reviewed"
+---
 
-**Version:** 1.0
-**Status:** Ready for Implementation
-**Updated:** 2025-10-19
-**Author:** AI Architecture Team (zen-architect)
+# Feature 1: Configuration Management - Technical Specification
+
+**Status:** ✅ Completed
+**Priority:** P0 (Must Have)
+**Last Updated:** 2025-10-21
 
 ## Overview
 
-This specification defines the complete implementation for Nova's configuration management system (Feature 1, P0 priority). It follows the "bricks and studs" modular design philosophy - each module is a self-contained brick with clear contracts (studs) that can be independently generated and regenerated.
+This specification defines the technical implementation for Nova's configuration management system, which supports multi-layer configuration with clear precedence rules and schema validation.
 
-## Architecture Summary
+### Goals
 
-**Approach:** Pydantic-Native Configuration System
+- Provide a clean, minimal public API for configuration access
+- Support three configuration scopes: global, project, and user
+- Enable environment variable overrides
+- Use Result types for predictable error handling
+- Support schema validation with clear error reporting
+- Implement singleton pattern for performance
 
-**Key Decisions:**
-- Use Pydantic models as schema definition (leverages existing dependency, type-safe)
-- YAML for config files (human-friendly, widely supported)
-- Singleton pattern for config access (simple for 99% of use cases)
-- Environment variable override convention: `NOVA_SECTION_KEY`
-- Lazy loading with caching (load on first access)
-- No config file watching (keep simple - restart to reload)
+### Non-Goals
 
-**Precedence Order (highest to lowest):**
-1. Environment variables (`NOVA_*`)
-2. User config (`.nova/config.local.yaml`)
-3. Project config (`.nova/config.yaml`)
-4. Global config (`$XDG_CONFIG_HOME/nova/config.yaml` or `~/.config/nova/config.yaml`)
+- Runtime configuration updates (config is loaded once and cached)
+- Configuration encryption or secrets management (defer to environment variables)
+- Configuration migration/versioning (forward compatibility via schema evolution)
 
-## Module Structure
+## Public API Contract
 
-```
-src/nova/
-├── config/
-│   ├── __init__.py       # Public API exports
-│   ├── models.py         # Pydantic config models (schema)
-│   ├── loader.py         # Config loading and merging logic
-│   ├── resolver.py       # Environment variable resolution
-│   └── paths.py          # Config file path utilities
-└── cli/
-    └── commands/
-        └── config.py     # CLI config commands
-```
+The `nova.config` module exports an ultra-minimal public API with a single function. All other modules must use this API - no internal modules should be imported directly.
 
----
+### Design Philosophy
 
-## Module Specifications
+- **Single responsibility**: One function does one thing - parse and validate merged config
+- **No caching**: Reads from disk every time for simplicity and freshness
+- **Validation is automatic**: No separate validation API needed
+- **Errors contain context**: All errors include scope information for debugging
+- **Direct file inspection**: Users can view individual scope files directly in their editor
 
-### Module: config.models
-
-**Purpose:** Define configuration schema using Pydantic models
-
-**Location:** `src/nova/config/models.py`
-
-**Contract:**
-- **Inputs:** Dictionary data from YAML files
-- **Outputs:** Validated Pydantic model instances
-- **Side Effects:** None (pure data models)
-- **Dependencies:** pydantic, typing
-
-**Public Interface:**
+### Module Exports
 
 ```python
-from pydantic import BaseModel, ConfigDict
+# nova/config/__init__.py
 
-class NovaConfig(BaseModel):
-    """Root configuration model for Nova
-
-    This model uses additive schema evolution:
-    - Fields are added as features are implemented
-    - All fields are optional with sensible defaults
-    - Old configs work with new Nova versions
-    - No explicit version field needed
-
-    Schema Evolution Strategy:
-    - Never remove fields (only deprecate)
-    - Never change field meaning (add new field instead)
-    - Only add optional fields with defaults
-    - Tool version determines parsing behavior
-
-    Future fields will be added here as features are implemented:
-    - bundles: BundlesConfig | None = None
-    - marketplace: MarketplaceConfig | None = None
-    - context: ContextConfig | None = None
-    """
-    model_config = ConfigDict(extra="allow")
-
-    # Currently no required fields - all future fields will be optional
-    # This allows empty config files to be valid
-```
-
-**Validation Rules:**
-- `extra="allow"` - Accept unknown config keys (forwards compatibility for future features)
-- Currently no required fields - empty config is valid
-- All future fields will be optional with sensible defaults
-- Store unknown fields as-is for forward compatibility
-- Provide helpful field descriptions for documentation
-
-**Schema Evolution Philosophy:**
-- Follow industry patterns (npm, Cargo, Python packaging)
-- Additive-only changes (never remove or change field meaning)
-- Tool version drives parsing behavior
-- No explicit config version field needed
-- Breaking changes only via major Nova version bumps
-
-**Testing Requirements:**
-- Unit tests for model validation (valid inputs, invalid inputs)
-- Test that unknown keys are accepted and preserved
-- Test that empty config (`{}`) is valid
-- Test that additional fields are accessible via model_dump()
-- Test forward compatibility (fields from "future" versions ignored gracefully)
-
----
-
-### Module: config.paths
-
-**Purpose:** Manage configuration file paths and discovery
-
-**Location:** `src/nova/config/paths.py`
-
-**Contract:**
-- **Inputs:** None (uses environment and filesystem)
-- **Outputs:** Path objects for config locations
-- **Side Effects:**
-  - Reads filesystem to find project root
-  - May create `~/.config/nova/` directory if needed
-- **Dependencies:** pathlib, os
-
-**Public Interface:**
-
-```python
-from pathlib import Path
-from typing import Optional
-
-def get_global_config_path(create_dir: bool = True) -> Path:
-    """Get path to global config file using XDG Base Directory spec.
-
-    Args:
-        create_dir: If True, create config directory if it doesn't exist
-
-    Returns:
-        Path to $XDG_CONFIG_HOME/nova/config.yaml
-        or ~/.config/nova/config.yaml if XDG_CONFIG_HOME not set
-
-    Side Effects:
-        May create config directory
-
-    Algorithm:
-        1. Check for XDG_CONFIG_HOME environment variable
-        2. If set: use $XDG_CONFIG_HOME/nova/config.yaml
-        3. If not: use ~/.config/nova/config.yaml (XDG default)
-        4. Create directory if create_dir=True
-    """
-    pass
-
-def get_project_config_path(start_dir: Path | None = None) -> Path | None:
-    """Find project config by searching up directory tree.
-
-    Args:
-        start_dir: Directory to start search from (default: cwd)
-
-    Returns:
-        Path to .nova/config.yaml if found, None otherwise
-
-    Algorithm:
-        1. Start from start_dir (or cwd)
-        2. Check for .nova/config.yaml
-        3. Move up one directory
-        4. Repeat until found or reach filesystem root
-    """
-    pass
-
-def get_user_config_path(project_root: Path | None = None) -> Path | None:
-    """Get path to user-specific config file.
-
-    Args:
-        project_root: Project root directory (uses get_project_config_path if None)
-
-    Returns:
-        Path to .nova/config.local.yaml if project found, None otherwise
-    """
-    pass
-
-def discover_config_paths() -> tuple[Path | None, Path | None, Path | None]:
-    """Discover all config file paths.
-
-    Returns:
-        Tuple of (global_path, project_path, user_path)
-        Any may be None if not found/applicable
-    """
-    pass
-```
-
-**Implementation Notes:**
-- Use `os.environ.get('XDG_CONFIG_HOME')` for XDG config directory
-- Fall back to `Path.home() / '.config'` if XDG_CONFIG_HOME not set
-- Use `Path.cwd()` as default start directory for project search
-- Search up to filesystem root (stop when `path.parent == path`)
-- Global config path always exists (create directory if needed)
-- Project/user paths may be None if not in a Nova project
-
-**Testing Requirements:**
-- Test global path creation
-- Test project path discovery (found, not found)
-- Test user path construction
-- Test directory tree traversal logic
-- Mock filesystem for isolation
-
----
-
-### Module: config.loader
-
-**Purpose:** Load and merge YAML configuration files
-
-**Location:** `src/nova/config/loader.py`
-
-**Contract:**
-- **Inputs:** Path objects to config files
-- **Outputs:** Merged configuration dictionary
-- **Side Effects:** Reads files from filesystem
-- **Dependencies:** yaml, pathlib, typing
-
-**Public Interface:**
-
-```python
-from pathlib import Path
-from typing import Any
-
-def load_config_file(path: Path) -> dict[str, Any]:
-    """Load a single YAML config file.
-
-    Args:
-        path: Path to YAML config file
-
-    Returns:
-        Dictionary of config values (empty dict if file doesn't exist)
-
-    Raises:
-        ConfigError: If YAML is invalid or file cannot be read
-
-    Notes:
-        - Returns {} if file doesn't exist (not an error)
-        - Uses safe YAML loading only
-    """
-    pass
-
-def merge_configs(*configs: dict[str, Any]) -> dict[str, Any]:
-    """Deep merge multiple config dictionaries.
-
-    Args:
-        *configs: Config dictionaries in precedence order (lowest to highest)
-
-    Returns:
-        Single merged dictionary
-
-    Algorithm:
-        For each key in configs (right to left):
-            - If value is dict: recursively merge
-            - If value is list: replace (don't merge lists)
-            - Otherwise: use rightmost (highest precedence) value
-
-    Example:
-        global = {"bundles": {"search_paths": ["/global"]}}
-        project = {"bundles": {"search_paths": ["/project"]}}
-        merged = merge_configs(global, project)
-        # Result: {"bundles": {"search_paths": ["/project"]}}
-    """
-    pass
-
-def load_all_configs() -> dict[str, Any]:
-    """Load and merge all config files.
-
-    Returns:
-        Merged configuration dictionary
-
-    Process:
-        1. Discover config file paths
-        2. Load global config (or {})
-        3. Load project config (or {})
-        4. Load user config (or {})
-        5. Merge with precedence: user > project > global
-    """
-    pass
-```
-
-**Merge Strategy:**
-- Dictionaries: Deep merge (recursive)
-- Lists: Replace (highest precedence wins, no concatenation)
-- Primitives: Replace (highest precedence wins)
-- Missing files: Treat as empty dict (not an error)
-
-**Error Handling:**
-- Wrap YAML errors with helpful context
-- Include file path in error messages
-- Provide suggestions for common YAML mistakes
-
-**Testing Requirements:**
-- Test loading valid YAML
-- Test loading invalid YAML (syntax errors)
-- Test loading non-existent file (should return {})
-- Test deep merge logic
-- Test list replacement (not concatenation)
-- Test nested dictionary merging
-- Test primitive value replacement
-
----
-
-### Module: config.resolver
-
-**Purpose:** Resolve final configuration with environment variable overrides
-
-**Location:** `src/nova/config/resolver.py`
-
-**Contract:**
-- **Inputs:** Merged config dictionary, environment variables
-- **Outputs:** Validated NovaConfig instance
-- **Side Effects:** Reads from os.environ
-- **Dependencies:** os, pydantic, config.models
-
-**Public Interface:**
-
-```python
-import os
-from typing import Any
-from nova.config.models import NovaConfig
-
-def get_env_overrides() -> dict[str, Any]:
-    """Extract Nova config overrides from environment variables.
-
-    Returns:
-        Dictionary of config overrides from env vars
-
-    Environment Variable Convention:
-        NOVA_SECTION_KEY=value
-
-    Examples:
-        NOVA_BUNDLES_SEARCH_PATHS=/custom:/another
-        NOVA_CONTEXT_MAX_SIZE_KB=2048
-
-    Type Conversion:
-        - Paths with : separator -> list of paths
-        - Numeric strings -> int
-        - "true"/"false" -> bool
-        - Otherwise -> string
-
-    Algorithm:
-        1. Find all env vars starting with NOVA_
-        2. Parse NOVA_SECTION_KEY format
-        3. Convert to nested dict structure
-        4. Apply type conversions
-    """
-    pass
-
-def resolve_config(merged: dict[str, Any]) -> NovaConfig:
-    """Apply environment overrides and validate config.
-
-    Args:
-        merged: Merged config from all file sources
-
-    Returns:
-        Validated NovaConfig instance
-
-    Raises:
-        ValidationError: If final config is invalid
-
-    Process:
-        1. Get environment variable overrides
-        2. Deep merge env overrides into merged config
-        3. Parse with Pydantic (validates and type-checks)
-        4. Return validated NovaConfig instance
-    """
-    pass
-```
-
-**Environment Variable Naming:**
-- Format: `NOVA_{SECTION}_{KEY}` (uppercase, underscores)
-- Section: Top-level config key (bundles, context, etc.)
-- Key: Nested key within section (search_paths, max_size_kb, etc.)
-- Multi-level nesting: `NOVA_SECTION_SUBSECTION_KEY`
-
-**Type Conversion Rules:**
-- Lists: Colon-separated values (`:` delimiter)
-- Integers: Numeric strings converted to int
-- Booleans: "true"/"false" (case-insensitive)
-- Paths: Expanded with `~` and environment variables
-- JSON: Support `NOVA_*_JSON` suffix for complex types
-
-**Testing Requirements:**
-- Test env var discovery (find NOVA_* vars)
-- Test name parsing (NOVA_SECTION_KEY format)
-- Test type conversions (list, int, bool, path)
-- Test deep merge with env overrides
-- Test validation errors are surfaced
-- Test precedence (env > user > project > global)
-
----
-
-### Module: config (Main API)
-
-**Purpose:** Public API for Nova configuration system
-
-**Location:** `src/nova/config/__init__.py`
-
-**Contract:**
-- **Inputs:** None (discovers and loads automatically)
-- **Outputs:** NovaConfig instance (cached singleton)
-- **Side Effects:**
-  - Loads config files on first access
-  - Caches result for subsequent calls
-- **Dependencies:** All other config modules
-
-**Public Interface:**
-
-```python
-from nova.config.models import NovaConfig, BundlesConfig, ContextConfig
-from nova.config.resolver import resolve_config
-from nova.config.loader import load_all_configs
-
-# Global cached instance
-_config: NovaConfig | None = None
-
-def get_config(reload: bool = False) -> NovaConfig:
-    """Get the Nova configuration (singleton pattern).
-
-    Args:
-        reload: If True, reload config from files (default: use cache)
-
-    Returns:
-        Validated NovaConfig instance
-
-    Notes:
-        - First call loads and caches config
-        - Subsequent calls return cached instance
-        - Use reload=True to force reload (rare)
-    """
-    global _config
-    if _config is None or reload:
-        merged = load_all_configs()
-        _config = resolve_config(merged)
-    return _config
-
-def load_config(project_root: Path | None = None, reload: bool = True) -> NovaConfig:
-    """Load configuration with explicit project root.
-
-    Args:
-        project_root: Explicit project root (for testing/special cases)
-        reload: Whether to force reload (default: True)
-
-    Returns:
-        Validated NovaConfig instance
-
-    Notes:
-        - Use for testing or explicit control
-        - Most code should use get_config() instead
-    """
-    pass
-
-def refresh_config() -> NovaConfig:
-    """Refresh configuration from files.
-
-    Returns:
-        Newly loaded NovaConfig instance
-
-    Shorthand for: get_config(reload=True)
-    """
-    return get_config(reload=True)
-
-# Re-export models for convenience
 __all__ = [
+    "ConfigScope",
     "NovaConfig",
-    "get_config",
-    "load_config",
-    "refresh_config",
+    "ConfigError",
+    "ConfigNotFoundError",
+    "ConfigYamlError",
+    "ConfigValidationError",
+    "ConfigIOError",
+    "parse_config",
 ]
 ```
 
-**Usage Examples:**
+### Enums
 
 ```python
-# Simple usage (99% of cases)
-from nova.config import get_config
-
-config = get_config()
-all_config = config.model_dump()  # Get all config as dict
-
-# Access config sections (when implemented)
-# if hasattr(config, 'bundles'):
-#     bundles = config.bundles
-
-# Testing with specific project root
-from nova.config import load_config
-
-config = load_config(project_root=Path("/test/project"))
-
-# Force reload after external changes
-from nova.config import refresh_config
-
-config = refresh_config()
+class ConfigScope(str, Enum):
+    """Configuration scope levels."""
+    GLOBAL = "global"      # ~/.config/nova/config.yaml
+    PROJECT = "project"    # .nova/config.yaml
+    USER = "user"          # .nova/config.local.yaml
+    EFFECTIVE = "effective"  # Merged result with env overrides
 ```
 
-**Testing Requirements:**
-- Test singleton behavior (same instance returned)
-- Test caching (no reload without flag)
-- Test reload functionality
-- Test integration with all modules
-- Mock filesystem for isolation
+### Error Models
 
----
+All error models are Pydantic BaseModel subclasses for type safety and validation.
 
-## CLI Command Specifications
+```python
+class ConfigNotFoundError(BaseModel):
+    """Configuration file not found at expected location."""
+    scope: ConfigScope
+    expected_path: Path
+    message: str
 
-**Location:** `src/nova/cli/commands/config.py`
 
-### Command: `nova config show`
+class ConfigYamlError(BaseModel):
+    """YAML parsing error in configuration file."""
+    scope: ConfigScope
+    path: Path
+    line: Optional[int]
+    column: Optional[int]
+    message: str
 
-**Purpose:** Display resolved configuration
 
-**Usage:**
+class ConfigValidationError(BaseModel):
+    """Schema validation error in configuration."""
+    scope: ConfigScope
+    path: Path
+    field: Optional[str]
+    message: str
+
+
+class ConfigIOError(BaseModel):
+    """File I/O error reading configuration."""
+    scope: ConfigScope
+    path: Path
+    message: str
+
+
+# Union of all config errors
+type ConfigError = (
+    ConfigNotFoundError
+    | ConfigYamlError
+    | ConfigValidationError
+    | ConfigIOError
+)
+```
+
+### Data Models
+
+Nova uses separate models for each configuration scope that merge into a single effective model.
+
+```python
+class GlobalConfig(BaseModel):
+    """Global configuration (~/.config/nova/config.yaml).
+
+    User-wide settings that apply to all Nova projects.
+    All fields are optional - provides defaults that can be overridden.
+    """
+    # Fields TBD - will be defined as features are implemented
+    pass
+
+
+class ProjectConfig(BaseModel):
+    """Project configuration (.nova/config.yaml).
+
+    Project-specific settings shared by all developers.
+    Committed to version control.
+    All fields are optional at parse time.
+    """
+    # Fields TBD - will be defined as features are implemented
+    pass
+
+
+class UserConfig(BaseModel):
+    """User configuration (.nova/config.local.yaml).
+
+    Personal overrides for local development.
+    NOT committed to version control.
+    All fields are optional - only contains overrides.
+    """
+    # Fields TBD - will be defined as features are implemented
+    pass
+
+
+class NovaConfig(BaseModel):
+    """Effective configuration (merged result).
+
+    Final configuration after merging global, project, and user configs
+    with environment variable overrides applied.
+
+    This is the model returned by parse_config() and used by all consumers.
+    Field requirements (required vs optional) TBD based on feature needs.
+    """
+    # Fields TBD - will be defined as features are implemented
+    pass
+```
+
+### Public API Function
+
+The entire public API consists of a single function:
+
+```python
+def parse_config(
+    *,
+    working_dir: Path | None = None
+) -> Result[NovaConfig, ConfigError]:
+    """Parse and validate effective configuration (merged from all scopes + env vars).
+
+    This function:
+    1. Discovers config files in all scopes (global, project, user)
+    2. Loads and parses YAML from each scope
+    3. Validates each scope against schema
+    4. Merges configs with precedence: env > user > project > global
+    5. Applies environment variable overrides
+    6. Returns the final validated configuration
+
+    Reads from disk on every call - no caching for simplicity and freshness.
+
+    Args:
+        working_dir: Directory to start searching for project config.
+                    Defaults to current working directory (Path.cwd()).
+                    Used to find .nova/config.yaml by walking up the tree.
+
+    Returns:
+        Result[NovaConfig, ConfigError]:
+            - Ok(config): Successfully loaded and validated configuration
+            - Err(ConfigNotFoundError): Explicitly requested config scope missing (rare)
+            - Err(ConfigYamlError): YAML syntax error (includes scope, line, column)
+            - Err(ConfigValidationError): Schema validation failed (includes scope, field)
+            - Err(ConfigIOError): File system error reading config
+
+    Error Context:
+        All errors include the `scope` field indicating which config file failed
+        (global, project, or user), enabling users to locate and fix the issue.
+
+    Example:
+        # Normal usage (current directory)
+        result = parse_config()
+        if result.is_ok():
+            config = result.ok()
+            # Use config fields as defined by NovaConfig model
+        else:
+            error = result.err()
+            print(f"Config error in {error.scope}: {error.message}")
+
+        # Explicit working directory (useful for testing)
+        result = parse_config(working_dir=Path("/path/to/project"))
+
+    Note:
+        If no configuration files are discovered, the function still returns `Ok`
+        with an empty `NovaConfig` using default values. Users can inspect individual
+        scope files directly by opening them in their editor. Programmatic scope
+        inspection is not needed.
+    """
+    ...
+```
+
+## CLI Commands
+
 ```bash
-nova config show                    # Show all config (effective)
-nova config show --scope global     # Show only global config
-nova config show --scope project    # Show only project config
-nova config show --scope user       # Show only user config
-nova config show --format yaml      # Output as YAML (default)
-nova config show --format json      # Output as JSON
+# Show effective configuration (merged from all scopes)
+nova config show
+
+# Show in JSON format
+nova config show --format json
 ```
 
-**Options:**
-- `--scope`: Filter to specific scope (global|project|user|effective)
-- `--format`: Output format (yaml|json)
+## Configuration Merging
 
-**Output:**
-- YAML or JSON representation of config
-- Include source annotation for each value in effective view
-- Clear indication if scope doesn't exist (e.g., no project config)
+The `parse_config()` function merges configurations from multiple scopes into a single `NovaConfig`:
 
-**Implementation:**
-```python
-import typer
-from nova.config import get_config
-from nova.config.loader import load_config_file
-from nova.config.paths import discover_config_paths
+### Merging Process
 
-def show(
-    scope: str = typer.Option("effective", help="Config scope to show"),
-    format: str = typer.Option("yaml", help="Output format"),
-) -> None:
-    """Show configuration values."""
-    if scope == "effective":
-        config = get_config()
-        # Show merged config with source annotations
-    else:
-        paths = discover_config_paths()
-        # Load specific scope file
-```
+1. **Parse each scope independently**:
 
----
+   - Parse global YAML → `GlobalConfig`
+   - Parse project YAML → `ProjectConfig`
+   - Parse user YAML → `UserConfig`
 
-### Command: `nova config validate`
+2. **Validate each scope** against its model schema
 
-**Purpose:** Validate configuration files
+3. **Merge into effective config** with precedence order:
 
-**Usage:**
-```bash
-nova config validate                # Validate all config files
-nova config validate --scope global # Validate specific scope
-```
+   - Start with global config (lowest priority)
+   - Overlay project config
+   - Overlay user config (highest priority)
+   - Apply environment variable overrides
 
-**Options:**
-- `--scope`: Validate specific scope only
+4. **Convert to `NovaConfig`** and validate final result
 
-**Output:**
-- Success message if valid
-- Detailed error messages if invalid
-- File path and line number for errors (if possible)
-- Exit code 0 for valid, 1 for invalid
+### Merging Rules
 
-**Implementation:**
-```python
-def validate(
-    scope: str = typer.Option("all", help="Scope to validate"),
-) -> None:
-    """Validate configuration files."""
-    try:
-        config = get_config()
-        typer.echo("✓ Configuration is valid")
-    except ValidationError as e:
-        # Format and display validation errors
-        typer.echo(f"✗ Configuration is invalid:\n{e}", err=True)
-        raise typer.Exit(1)
-```
+- **Field-level merging**: Config merges at the field level, not file level
+- **Deep merging**: Nested objects are merged recursively
+- **List replacement**: Lists are replaced entirely, not merged
+- **None values**: `None` or missing fields don't override existing values
 
----
-
-## Example Configuration Files
-
-### Global Config (`$XDG_CONFIG_HOME/nova/config.yaml` or `~/.config/nova/config.yaml`)
+### Example
 
 ```yaml
-# Placeholder sections - will be defined by future features
-# These are examples showing the config system works with any key-value pairs
-# Note: Empty config file is also valid!
-
-example_section:
-  # Example string setting
-  api_url: "https://api.example.com"
-
-  # Example list setting
-  search_paths:
-    - "/usr/local/share/nova"
-    - "~/.local/share/nova"
-
-  # Example number setting
-  timeout_seconds: 30
-
-  # Example boolean setting
+# Global: ~/.config/nova/config.yaml
+section_a:
+  field_1: value_from_global
+  field_2: 100
+section_b:
   enabled: true
+
+# Project: .nova/config.yaml
+section_a:
+  field_1: value_from_project  # Overrides global
+section_c:
+  name: example
+
+# User: .nova/config.local.yaml
+section_a:
+  field_2: 200  # Overrides global, keeps project's field_1
+
+# Effective result (NovaConfig):
+section_a:
+  field_1: value_from_project  # From project
+  field_2: 200                 # From user
+section_b:
+  enabled: true                # From global
+section_c:
+  name: example                # From project
 ```
 
-### Project Config (`.nova/config.yaml`)
+**Note**: The internal scope models (`GlobalConfig`, `ProjectConfig`, `UserConfig`) are not exported from the public API. Only `NovaConfig` is exposed.
 
-```yaml
-# Project-specific placeholder configuration
-example_section:
-  # Override global API URL for this project
-  api_url: "https://project-api.example.com"
-
-  # Additional project-specific paths
-  search_paths:
-    - "./local/share"
-
-  # Project-specific timeout
-  timeout_seconds: 60
-```
-
-### User Config (`.nova/config.local.yaml`)
-
-```yaml
-# User-specific placeholder configuration (not committed to git)
-example_section:
-  # Personal API URL override
-  api_url: "https://dev.example.com"
-
-  # Enable debug mode for development
-  debug: true
-```
-
----
-
-## Environment Variable Examples
-
-```bash
-# Override any config value using NOVA_SECTION_KEY format
-
-# Override API URL from example_section
-export NOVA_EXAMPLE_SECTION_API_URL="https://override.example.com"
-
-# Override search paths (colon-separated for lists)
-export NOVA_EXAMPLE_SECTION_SEARCH_PATHS="/custom/path:/another/path"
-
-# Override timeout (numeric values)
-export NOVA_EXAMPLE_SECTION_TIMEOUT_SECONDS=120
-
-# Override boolean flag
-export NOVA_EXAMPLE_SECTION_ENABLED=false
-```
-
----
-
-## Error Handling
-
-### Validation Errors
-
-**Clear error messages for common issues:**
+## Internal Module Structure
 
 ```
-❌ Configuration Error in /path/to/.nova/config.yaml
-
-  Field: example_section.timeout_seconds
-  Error: Value must be a positive integer
-  Got: "30sec"
-
-  Suggestion: Use a number without units, e.g., timeout_seconds: 30
+nova/config/
+├── __init__.py          # Public API: parse_config()
+├── models.py            # All Pydantic models
+├── paths.py             # Config file discovery
+├── loader.py            # YAML parsing and validation
+├── merger.py            # Config merging with precedence
+└── resolver.py          # Environment variable resolution
 ```
 
-### YAML Syntax Errors
+### Module APIs
 
-```
-❌ YAML Syntax Error in /path/to/.nova/config.yaml:5
-
-  mapping values are not allowed here
-  in "<unicode string>", line 5, column 15
-
-  Context:
-    3: example_section:
-    4:   search_paths:
-    5:     - /path: value  # <- Error here
-
-  Suggestion: Check indentation and YAML syntax
-```
-
-### Missing Config Files
-
-```
-ℹ No project configuration found
-
-  Searched from: /current/directory
-  Looking for: .nova/config.yaml
-
-  Tip: Run 'nova init' to create a project configuration
-```
-
----
-
-## Testing Strategy
-
-### Unit Tests
-
-**Test each module independently:**
-
-- `test_config_models.py` - Pydantic model validation
-- `test_config_paths.py` - Path discovery logic
-- `test_config_loader.py` - YAML loading and merging
-- `test_config_resolver.py` - Environment variable resolution
-- `test_config_main.py` - Main API and caching
-
-### Integration Tests
-
-**Test complete config system:**
-
-- `test_config_integration.py` - End-to-end config loading
-- `test_config_precedence.py` - Verify precedence order
-- `test_config_env_override.py` - Environment variable overrides
-- `test_config_cli.py` - CLI commands with real filesystem
-
-### Test Fixtures
-
-**Minimal test fixtures:**
+#### `models.py`
 
 ```python
-@pytest.fixture
-def temp_config_files(tmp_path):
-    """Create temporary config files for testing."""
-    global_config = tmp_path / ".config" / "nova" / "config.yaml"
-    global_config.parent.mkdir(parents=True)
-    global_config.write_text("""
-example_section:
-  search_paths:
-    - /global/path
-  timeout_seconds: 30
-    """)
+class GlobalConfig(BaseModel):
+    """Global scope configuration"""
 
-    project_config = tmp_path / "project" / ".nova" / "config.yaml"
-    project_config.parent.mkdir(parents=True)
-    project_config.write_text("""
-example_section:
-  search_paths:
-    - /project/path
-  timeout_seconds: 60
-    """)
+class ProjectConfig(BaseModel):
+    """Project scope configuration"""
 
-    return {
-        "global": global_config,
-        "project": project_config,
-        "tmp_path": tmp_path
-    }
+class UserConfig(BaseModel):
+    """User scope configuration"""
+
+class NovaConfig(BaseModel):
+    """Effective merged configuration"""
 ```
 
----
+#### `paths.py`
 
-## Success Criteria
+```python
+@dataclass
+class ConfigPaths:
+    global_path: Path | None
+    project_path: Path | None
+    user_path: Path | None
 
-- [ ] All FR requirements from PRD are met
-- [ ] Config loads from all 3 scopes with correct precedence
-- [ ] Environment variables override config values correctly
-- [ ] YAML validation provides clear, actionable error messages
-- [ ] CLI commands work intuitively and provide helpful output
-- [ ] Code follows ruthless simplicity principles
-- [ ] All modules have clear, single responsibilities
-- [ ] Comprehensive test coverage (unit + integration)
-- [ ] Documentation includes examples and common use cases
-- [ ] Zero unnecessary abstractions or future-proofing
+def discover_config_paths(working_dir: Path | None = None) -> ConfigPaths:
+    """Discover all configuration file paths from working directory."""
+```
 
----
+#### `loader.py`
 
-## Implementation Phases
+```python
+def load_global_config(path: Path) -> Result[GlobalConfig, ConfigError]:
+    """Load and validate global config from YAML file."""
 
-### Phase 1: Core Config System (Modules: models, paths, loader)
-**Estimated Time:** 2-3 hours
-**Deliverables:**
-- Config models with Pydantic validation
-- Path discovery for all 3 scopes
-- YAML loading and deep merge logic
-- Unit tests for core functionality
+def load_project_config(path: Path) -> Result[ProjectConfig, ConfigError]:
+    """Load and validate project config from YAML file."""
 
-### Phase 2: Resolution and Validation (Modules: resolver, main API)
-**Estimated Time:** 1-2 hours
-**Deliverables:**
-- Environment variable override support
-- Main Config class with singleton pattern
-- Integration tests for complete loading
-- Error handling with clear messages
+def load_user_config(path: Path) -> Result[UserConfig, ConfigError]:
+    """Load and validate user config from YAML file."""
+```
 
-### Phase 3: CLI Commands (Module: cli/commands/config.py)
-**Estimated Time:** 1-2 hours
-**Deliverables:**
-- `nova config show` command
-- `nova config paths` command
-- `nova config get` command
-- `nova config validate` command
-- CLI integration tests
+#### `merger.py`
 
-### Phase 4: Polish and Documentation
-**Estimated Time:** 1 hour
-**Deliverables:**
-- Example config files with comments
-- Usage documentation
-- Error message improvements
-- Performance verification
+```python
+def merge_configs(
+    global_cfg: GlobalConfig | None,
+    project_cfg: ProjectConfig | None,
+    user_cfg: UserConfig | None
+) -> NovaConfig:
+    """Merge configs with precedence: user > project > global."""
+```
 
----
+#### `resolver.py`
 
-## Future Considerations (Not in Scope)
+```python
+def apply_env_overrides(config: NovaConfig) -> NovaConfig:
+    """Apply environment variable overrides to config."""
+```
 
-These are explicitly **not** included in this specification but could be added later if needed:
+#### `__init__.py`
 
-- Config file watching and auto-reload
-- Config migration system for version changes
-- Config export/import commands
-- Config encryption for sensitive values
-- Config schema documentation generation
-- Config diff command to compare scopes
-- Interactive config setup wizard
+```python
+def parse_config(*, working_dir: Path | None = None) -> Result[NovaConfig, ConfigError]:
+    """Parse and validate effective configuration from all scopes."""
+```
 
-Keep the initial implementation simple. Add these only if real user needs emerge.
+### Data Flow
 
----
+```
+parse_config()
+  ↓
+discover_config_paths()
+  ↓
+load_global_config(), load_project_config(), load_user_config()
+  ↓
+merge_configs()
+  ↓
+apply_env_overrides()
+  ↓
+Result[NovaConfig, ConfigError]
+```
 
-## Dependencies
+## Implementation Checklist
 
-**Required:**
-- pydantic >= 2.12.3 (already in project)
-- pyyaml >= 6.0 (needs to be added)
-- typer >= 0.19.2 (already in cli group)
+- [ ] Define complete NovaConfig schema
+- [ ] Implement path discovery
+- [ ] Implement YAML loading
+- [ ] Implement configuration merging
+- [ ] Implement environment variable resolution
+- [ ] Implement validation
+- [ ] Implement caching/singleton (Not implemented - intentionally always reloads config)
+- [ ] Write comprehensive tests
+- [ ] Update CLI commands to use new API
+- [ ] Document usage patterns
 
-**Optional:**
-- None
+## References
 
----
-
-## Appendix: Design Rationale
-
-### Why Pydantic for Schema?
-
-1. Already in dependencies - zero additional cost
-2. Type-safe - excellent IDE support and auto-completion
-3. Automatic validation with clear error messages
-4. Supports complex validation rules
-5. Integrates well with environment variables
-6. Generates JSON schema automatically (future marketplace feature)
-
-### Why YAML for Config Files?
-
-1. Human-friendly - easier to read/write than JSON
-2. Supports comments - critical for documentation
-3. Widely used in similar tools (docker-compose, kubernetes, etc.)
-4. PyYAML is stable and well-maintained
-
-### Why Singleton Pattern?
-
-1. Config rarely changes during runtime
-2. Simpler API - just call `get_config()`
-3. Avoids passing config everywhere
-4. Still testable with `reload=True` flag
-5. Can refactor to dependency injection later if needed
-
-### Why No Config Watching?
-
-1. Adds significant complexity
-2. Requires background threads or async
-3. Config changes are rare during execution
-4. Simple restart is acceptable for MVP
-5. Can add later if users request it
-
-### Why No Version Field?
-
-**Decision:** Use additive schema evolution without explicit version field
-
-**Rationale:**
-
-1. **Industry Standard Practice**
-   - npm (package.json), Cargo (Cargo.toml), Python (pyproject.toml) don't use config versions
-   - Additive-only changes are the proven pattern
-   - Docker Compose is actively removing their version field
-
-2. **YAGNI Principle**
-   - Currently at placeholder stage - don't know final schema yet
-   - Adding version now is premature
-   - Can add later if breaking changes become necessary
-
-3. **Tool Version Drives Behavior**
-   - Nova 0.1: Accepts any YAML, stores as-is
-   - Nova 0.2: Understands `bundles` section (optional field)
-   - Nova 0.3: Understands `context` section (optional field)
-   - Old configs work with new Nova versions (backward compatible)
-
-4. **Additive Evolution Path**
-   ```python
-   # Nova 0.1
-   class NovaConfig(BaseModel):
-       pass  # No fields
-
-   # Nova 0.2
-   class NovaConfig(BaseModel):
-       bundles: BundlesConfig | None = None  # Optional field added
-
-   # Nova 0.3
-   class NovaConfig(BaseModel):
-       bundles: BundlesConfig | None = None
-       context: ContextConfig | None = None  # Another optional field
-   ```
-
-5. **Clear Migration Path If Needed**
-   - If breaking changes required: `nova config migrate` command
-   - Can detect "old format" configs and update them
-   - Major Nova version bump signals breaking config changes
-   - Don't need to pre-plan for this
-
-**When Would We Need Version?**
-
-Only if we need to:
-- Remove a field (breaking change)
-- Change field meaning (breaking change)
-- Restructure significantly (breaking change)
-
-**Alternatives if that happens:**
-- Deprecate old field, add new one with different name
-- Major version bump of Nova itself (0.x → 1.0)
-- `nova config migrate` command for one-time updates
-- Support both formats temporarily
-
-This specification provides everything needed to implement Feature 1 following the modular design philosophy.
+- [Feature 1 PRD](../explore/prd/3-features-requirements/feature-1-config-management.md)
+- [ADR-001: CLI Business Logic Separation](../architecture/adr-001-cli-business-logic-separation.md)
+- [Python API Design Guidelines](../code-guidelines/python-api-design.md)
+- [Functional Error Handling Guidelines](../code-guidelines/functools-result.md)
