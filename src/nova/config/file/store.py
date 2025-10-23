@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
+from nova.marketplace import MarketplaceConfig
 from nova.utils.functools.models import Err, Ok, Result, is_err
 
 from ..merger import merge_configs
@@ -23,6 +24,7 @@ from ..models import (
     UserConfig,
 )
 from ..resolver import apply_env_overrides
+from .config import FileConfigPaths
 from .paths import discover_config_paths
 
 ScopeModel = GlobalConfig | ProjectConfig | UserConfig
@@ -30,19 +32,12 @@ ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
 
 
 class FileConfigStore:
-    """File-based configuration store using YAML files."""
-
-    def __init__(self, working_dir: Path | None = None) -> None:
-        """Initialize file config store.
-
-        Args:
-            working_dir: Working directory for path resolution (defaults to cwd)
-        """
-        self.working_dir = working_dir or Path.cwd()
+    def __init__(self, working_dir: Path, config: FileConfigPaths) -> None:
+        self.working_dir = working_dir
+        self.config = config
 
     def load(self) -> Result[NovaConfig, ConfigError]:
-        """Load merged configuration from YAML files."""
-        paths = discover_config_paths(self.working_dir)
+        paths = discover_config_paths(self.working_dir, self.config)
 
         scope_specs: tuple[tuple[Path | None, ScopeModelType, ConfigScope], ...] = (
             (paths.global_path, GlobalConfig, ConfigScope.GLOBAL),
@@ -59,16 +54,16 @@ class FileConfigStore:
             if is_err(result):
                 return Err(result.err())
             value = result.unwrap()
-            if scope is ConfigScope.GLOBAL:
-                assert value is None or isinstance(value, GlobalConfig)
-                global_cfg = value
-            elif scope is ConfigScope.PROJECT:
-                assert value is None or isinstance(value, ProjectConfig)
-                project_cfg = value
-            else:
-                assert scope is ConfigScope.USER
-                assert value is None or isinstance(value, UserConfig)
-                user_cfg = value
+            match scope:
+                case ConfigScope.GLOBAL:
+                    assert value is None or isinstance(value, GlobalConfig)
+                    global_cfg = value
+                case ConfigScope.PROJECT:
+                    assert value is None or isinstance(value, ProjectConfig)
+                    project_cfg = value
+                case ConfigScope.USER:
+                    assert value is None or isinstance(value, UserConfig)
+                    user_cfg = value
 
         merged = merge_configs(
             global_cfg,
@@ -77,6 +72,14 @@ class FileConfigStore:
         )
         effective = apply_env_overrides(merged)
         return Ok(effective)
+
+    def get_marketplace_config(self) -> Result[list[MarketplaceConfig], ConfigError]:
+        """Get marketplace configuration from all scopes."""
+        result = self.load()
+        if is_err(result):
+            return Err(result.err())
+        config = result.unwrap()
+        return Ok(config.marketplaces)
 
     def _load_optional(
         self,

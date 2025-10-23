@@ -104,7 +104,7 @@ marketplaces:
 - `github`: GitHub repository (owner/repo format)
 - `git`: Generic git repository URL
 - `local`: Local filesystem path
-- `url`: Direct URL to marketplace.json file
+- ~~`url`: Direct URL to marketplace.json file~~ (Future extension)
 
 **Rationale:**
 - Global: Personal marketplace preferences
@@ -145,13 +145,14 @@ Minimal marketplace.json schema (JSON format):
 ### Decision 4: Marketplace Source Types
 **Date:** 2025-10-21
 
-Support all source types Claude Code supports:
+Support git-based and local source types:
 ```bash
 nova marketplace add owner/repo                      # GitHub shorthand
 nova marketplace add https://git.url/repo            # Git URL
 nova marketplace add ./local-path                    # Local directory
-nova marketplace add https://url/marketplace.json    # Direct JSON URL
 ```
+
+**Future extension:** Direct URL sources (`https://url/marketplace.json`)
 
 For git sources, assume `marketplace.json` is at repo root.
 
@@ -361,7 +362,7 @@ nova marketplace show official-nova-bundles
 
 ## Public API Contract
 
-The `nova.marketplace` module exports a minimal API for marketplace management.
+The `nova.marketplace` module exports an object-oriented API for marketplace management following the dependency injection pattern established in ADR-002.
 
 ### Module Exports
 
@@ -369,6 +370,12 @@ The `nova.marketplace` module exports a minimal API for marketplace management.
 # nova/marketplace/__init__.py
 
 __all__ = [
+    # Main API Class
+    "Marketplace",
+
+    # Configuration
+    "MarketplaceConfig",
+
     # Enums
     "MarketplaceSourceType",
     "MarketplaceScope",
@@ -389,12 +396,6 @@ __all__ = [
     "Contact",
     "BundleEntry",
     "MarketplaceInfo",
-
-    # Public Functions
-    "add_marketplace",
-    "remove_marketplace",
-    "list_marketplaces",
-    "get_marketplace",
 ]
 ```
 
@@ -543,40 +544,77 @@ class MarketplaceState(BaseModel):
     last_updated: str  # ISO datetime string
 ```
 
-### Public API Functions
+### Marketplace Class API
 
 ```python
-def add_marketplace(
-    source: str,
-    *,
-    scope: MarketplaceScope,
-    working_dir: Path | None = None
-) -> Result[MarketplaceInfo, MarketplaceError]:
-    ...
+from nova.marketplace import MarketplaceConfigProvider
 
+class Marketplace:
+    """Marketplace management API following dependency injection pattern."""
 
-def remove_marketplace(
-    name_or_source: str,
-    *,
-    scope: MarketplaceScope | None = None,
-    working_dir: Path | None = None
-) -> Result[MarketplaceInfo, MarketplaceError]:
-    ...
+    def __init__(self, config_provider: MarketplaceConfigProvider) -> None:
+        """Initialize with a marketplace configuration provider."""
+        ...
 
+    def add(
+        self,
+        source: str,
+        *,
+        scope: MarketplaceScope,
+        working_dir: Path | None = None,
+    ) -> Result[MarketplaceInfo, MarketplaceError]:
+        """Add a marketplace source."""
+        ...
 
-def list_marketplaces(
-    *,
-    working_dir: Path | None = None
-) -> Result[list[MarketplaceInfo], MarketplaceError]:
-    ...
+    def remove(
+        self,
+        name_or_source: str,
+        *,
+        scope: MarketplaceScope | None = None,
+        working_dir: Path | None = None,
+    ) -> Result[MarketplaceInfo, MarketplaceError]:
+        """Remove a marketplace by name or source."""
+        ...
 
+    def list(
+        self,
+        *,
+        working_dir: Path | None = None,
+    ) -> Result[list[MarketplaceInfo], MarketplaceError]:
+        """List all configured marketplaces."""
+        ...
 
-def get_marketplace(
-    name: str,
-    *,
-    working_dir: Path | None = None
-) -> Result[MarketplaceInfo, MarketplaceError]:
-    ...
+    def get(
+        self,
+        name: str,
+        *,
+        working_dir: Path | None = None,
+    ) -> Result[MarketplaceInfo, MarketplaceError]:
+        """Get details for a specific marketplace."""
+        ...
+```
+
+### MarketplaceConfigProvider Protocol
+
+```python
+class MarketplaceConfigProvider(Protocol):
+    """Protocol for providing marketplace configuration."""
+
+    def get_marketplace_config(self) -> list[MarketplaceConfig]:
+        """Get marketplace configuration from all scopes."""
+        ...
+```
+
+**Usage Example:**
+```python
+from nova.config import FileConfigStore
+from nova.marketplace import Marketplace, MarketplaceScope
+
+# FileConfigStore implements MarketplaceConfigProvider protocol
+config_store = FileConfigStore()
+marketplace = Marketplace(config_store)
+
+result = marketplace.add("anthropics/nova-bundles", scope=MarketplaceScope.GLOBAL)
 ```
 
 ## Internal Module Structure

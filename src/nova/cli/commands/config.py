@@ -8,6 +8,7 @@ import typer
 import yaml
 
 from nova.config import ConfigError, FileConfigStore
+from nova.settings import settings
 from nova.utils.functools.models import is_err
 
 FormatOption = Annotated[
@@ -38,9 +39,11 @@ def show(
     format: FormatOption = "yaml",
     working_dir: WorkingDirOption = None,
 ) -> None:
-    """Show effective configuration after merging all scopes."""
     selected_format = format.lower()
-    store = FileConfigStore(working_dir=working_dir)
+    store = FileConfigStore(
+        working_dir=working_dir or Path.cwd(),
+        config=settings.to_file_config_paths(),
+    )
     result = store.load()
     if is_err(result):
         _handle_error(result.err())

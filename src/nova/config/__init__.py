@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from nova.protocols import ConfigStore
 from nova.utils.functools.models import Result
 
 from .file import FileConfigStore
@@ -20,7 +21,6 @@ from .models import (
     ConfigYamlError,
     NovaConfig,
 )
-from .protocol import ConfigStore
 
 __all__ = [
     "ConfigError",

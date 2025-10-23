@@ -50,6 +50,47 @@ class RepositoryProtocol(Protocol):
         ...
 ```
 
+### Pattern Matching with `match` Statements
+
+Use `match` statements (Python 3.10+) instead of `if-elif-else` chains when dispatching on enums or discriminated types:
+
+```python
+# Good - using match for enum dispatch
+match scope:
+    case ConfigScope.GLOBAL:
+        global_cfg = value
+    case ConfigScope.PROJECT:
+        project_cfg = value
+    case ConfigScope.USER:
+        user_cfg = value
+
+# Bad - if-elif-else chain
+if scope is ConfigScope.GLOBAL:
+    global_cfg = value
+elif scope is ConfigScope.PROJECT:
+    project_cfg = value
+else:
+    user_cfg = value
+```
+
+**Benefits:**
+- More explicit and readable
+- Exhaustiveness checking (easier to see all cases are handled)
+- Consistent with functional programming style
+- Better tooling support for pattern matching
+
+**When to use `match`:**
+- Dispatching on enum values
+- Handling discriminated union types
+- Processing structured data with different shapes
+- Multiple conditional branches based on value patterns
+
+**When to use `if-elif-else`:**
+- Simple boolean conditions
+- Range checks or complex predicates
+- Two or fewer branches
+- Conditions that aren't value-based patterns
+
 ## Design Principles
 
 ### Simplicity First

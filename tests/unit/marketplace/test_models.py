@@ -12,13 +12,11 @@ from nova.marketplace.models import (
     LocalMarketplaceSource,
     MarketplaceManifest,
     MarketplaceState,
-    URLMarketplaceSource,
 )
 
 VALID_NAME = "Ada Lovelace"
 VALID_REPO = "owner/repo"
 VALID_GIT_URL = "https://github.com/owner/repo.git"
-VALID_DIRECT_URL = "https://example.com/marketplace.json"
 VALID_VERSION = "1.2.3"
 
 
@@ -97,17 +95,6 @@ def test_local_source_rejects_file(tmp_path) -> None:
     file_path.write_text("data")
     with pytest.raises(ValidationError):
         LocalMarketplaceSource(path=file_path)
-
-
-@pytest.mark.parametrize("url", [VALID_DIRECT_URL, "http://example.com/file.json"])
-def test_url_source_accepts_http(url: str) -> None:
-    assert str(URLMarketplaceSource(url=url).url) == url
-
-
-@pytest.mark.parametrize("url", ["ftp://example.com/file.json", "file:///tmp/file.json"])
-def test_url_source_rejects_non_http(url: str) -> None:
-    with pytest.raises(ValidationError):
-        URLMarketplaceSource(url=url)
 
 
 @pytest.mark.parametrize(

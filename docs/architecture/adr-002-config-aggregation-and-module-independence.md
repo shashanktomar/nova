@@ -2,16 +2,16 @@
 status: accepted
 date: 2025-10-23
 updated: 2025-10-23
-decision: Config Store Protocol and Module Independence
+decision: Feature-Specific Config Protocols and Module Independence
 context: Feature 2 (Marketplace & Bundle Distribution)
 ---
 
-# ADR-002: Config Store Protocol and Module Independence
+# ADR-002: Feature-Specific Config Protocols and Module Independence
 
 ## Status
 
 **Accepted** - 2025-10-23
-**Updated** - 2025-10-23 (Added ConfigStore protocol)
+**Updated** - 2025-10-23 (Changed from ConfigStore to feature-specific protocols)
 
 ## Context
 
@@ -26,31 +26,32 @@ Option 2 keeps feature modules independent, but it forces each consumer to reimp
 
 ## Decision
 
-**Configuration storage and retrieval is abstracted behind the `ConfigStore` protocol. Feature modules depend on this protocol, not on specific implementations.**
+**Feature modules define their own configuration provider protocols. The config module implements these protocols, avoiding circular dependencies.**
 
 Key principles:
 
-1. **ConfigStore Protocol** - `nova.config` defines a `ConfigStore` protocol with a single method: `load() -> Result[NovaConfig, ConfigError]`
-2. **File-based Implementation** - `nova.config.file.FileConfigStore` implements the protocol for YAML file-based configuration
-3. **Feature Module Independence** - Feature modules (e.g., `nova.marketplace`) depend on the `ConfigStore` protocol, not on file-based implementation
-4. **Consumer Choice** - Consumers (CLI, library users) choose which `ConfigStore` implementation to use
+1. **Feature-Specific Protocols** - Each feature module (e.g., `nova.marketplace`) defines a protocol for accessing its configuration (e.g., `MarketplaceConfigProvider`)
+2. **Config Implements Protocols** - `nova.config.file.FileConfigStore` implements feature protocols by extracting relevant config sections
+3. **Dependency Inversion** - Feature modules depend on their own protocols, not on `nova.config`. Config depends on feature modules to implement their protocols.
+4. **Acyclic Dependencies** - Dependency flows: `nova.config` → `nova.marketplace.protocol` (one direction only)
 
 Practical implications:
 
-- `nova.config` exposes both the `ConfigStore` protocol and `FileConfigStore` implementation
-- Feature modules accept a `ConfigStore` instance (dependency injection) rather than reading files directly
+- Feature modules define protocols in their own package: `nova.marketplace.protocol.MarketplaceConfigProvider`
+- Feature module APIs accept protocol instances: `Marketplace(config_provider: MarketplaceConfigProvider)`
+- `nova.config.file.FileConfigStore` implements all feature protocols by loading and extracting relevant config sections
 - `nova.config` may import models from feature packages (e.g., `MarketplaceConfig`) to describe configuration sections
-- CLI uses `FileConfigStore` directly for file-based configuration
-- Library users can implement their own `ConfigStore` (e.g., database-backed) and pass it to feature modules
+- CLI uses `FileConfigStore` directly, which implements all necessary feature protocols
+- Library users can implement feature protocols independently
 
 ## Rationale
 
-1. **Abstraction** – The `ConfigStore` protocol decouples feature modules from file-based implementation. Feature modules work with any configuration source.
-2. **Library friendliness** – Library users can implement `ConfigStore` backed by databases, remote services, or in-memory structures without changing feature module code.
-3. **Testability** – Tests can provide mock `ConfigStore` implementations without touching the filesystem.
-4. **Single responsibility** – File-specific logic (YAML parsing, path discovery) is isolated in `FileConfigStore`. Feature modules don't need to know about files.
-5. **Acyclic dependencies** – Feature modules depend on the protocol in `nova.config`, not on implementations. Dependency flows one direction: `nova.marketplace` → `nova.config.ConfigStore` protocol.
-6. **Validation reuse** – Feature modules own their configuration schemas (e.g., `MarketplaceConfig`). `nova.config` imports and uses these models.
+1. **No Circular Dependencies** – Feature modules define their own protocols. Config imports from features to implement protocols. Dependency is one-way: config → features.
+2. **Library friendliness** – Library users can implement feature protocols (e.g., `MarketplaceConfigProvider`) independently without using `nova.config` at all.
+3. **Testability** – Tests can provide mock protocol implementations without touching the filesystem or config system.
+4. **Single responsibility** – Features own their configuration contracts. Config owns aggregation and file I/O.
+5. **Minimal coupling** – Features only depend on their own protocols, not on config system internals.
+6. **Clear contracts** – Each feature protocol explicitly declares what configuration it needs (e.g., `get_marketplace_config() -> list[MarketplaceConfig]`).
 
 ## Consequences
 
@@ -67,8 +68,28 @@ Practical implications:
 
 ### Implementation Notes
 - CLI uses `FileConfigStore` directly for default file-based behavior
-- Feature module APIs accept `ConfigStore` instances: `add_marketplace(source, config_store=...)`
-- Tests can create mock stores: `class MockConfigStore: def load(self) -> Result[NovaConfig, ConfigError]: ...`
+- Feature modules use class-based APIs with protocol dependencies: `Marketplace(config_provider: MarketplaceConfigProvider)`
+- Tests can create mock providers: `class MockMarketplaceConfigProvider: def get_marketplace_config(self) -> list[MarketplaceConfig]: ...`
+
+### Example: Marketplace Module
+
+```python
+# nova/marketplace/protocol.py
+class MarketplaceConfigProvider(Protocol):
+    def get_marketplace_config(self) -> list[MarketplaceConfig]:
+        ...
+
+# nova/marketplace/api.py
+class Marketplace:
+    def __init__(self, config_provider: MarketplaceConfigProvider):
+        self._config_provider = config_provider
+
+# nova/config/file/store.py
+class FileConfigStore:
+    def get_marketplace_config(self) -> list[MarketplaceConfig]:
+        config = self.load().unwrap()
+        return config.marketplaces
+```
 
 ## Related Documents
 

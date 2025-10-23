@@ -1,25 +1,12 @@
-"""Application settings and constants for Nova.
-
-This module provides centralized app-level configuration including:
-- Core app metadata (name, version, environment)
-- Path-related constants (directory names, filenames)
-
-Settings are loaded from environment variables and .env files using Pydantic Settings.
-
-Environment Variables:
-    All settings can be overridden using environment variables with the prefix NOVA_.
-    Use double underscores (__) for nested settings.
-
-    Examples:
-        NOVA_APP__ENVIRONMENT=prod
-        NOVA_PATHS__CONFIG_DIR_NAME=nova
-        NOVA_PATHS__DATA_DIR_NAME=nova
-"""
+from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from nova.config.file.config import FileConfigPaths
+from nova.utils.paths import PathsConfig
 
 
 class AppInfo(BaseModel):
@@ -68,20 +55,6 @@ class AppPaths(BaseModel):
 
 
 class Settings(BaseSettings):
-    """Nova application settings.
-
-    Provides centralized configuration management with support for:
-    - Environment variable overrides
-    - .env file loading
-    - Nested settings structure
-    - Type validation
-
-    Access settings via the pre-initialized `settings` singleton:
-        from nova.settings import settings
-        settings.app.version
-        settings.paths.config_dir_name
-    """
-
     app: AppInfo = AppInfo()
     paths: AppPaths = AppPaths()
 
@@ -94,20 +67,23 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )
 
+    def to_file_config_paths(self) -> FileConfigPaths:
+        return FileConfigPaths(
+            global_config_filename=self.paths.global_config_filename,
+            project_config_filename=self.paths.project_config_filename,
+            user_config_filename=self.paths.user_config_filename,
+            project_subdir_name=self.paths.project_subdir_name,
+            config_dir_name=self.paths.config_dir_name,
+        )
+
+    def to_paths_config(self) -> PathsConfig:
+        return PathsConfig(
+            config_dir_name=self.paths.config_dir_name,
+            project_subdir_name=self.paths.project_subdir_name,
+        )
+
 
 def get_settings() -> Settings:
-    """Get the singleton settings instance.
-
-    Returns:
-        Settings: The application settings
-
-    Example:
-        from nova.settings import get_settings
-
-        settings = get_settings()
-        print(settings.app.version)
-        print(settings.paths.config_dir_name)
-    """
     global _settings
     if _settings is None:
         _settings = Settings()

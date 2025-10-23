@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from nova.config import FileConfigStore
+from nova.config.file.config import FileConfigPaths
 from nova.config.models import (
     ConfigIOError,
     ConfigScope,
@@ -13,6 +14,14 @@ from nova.config.models import (
     ConfigYamlError,
 )
 from nova.utils.functools.models import is_err, is_ok
+
+TEST_CONFIG = FileConfigPaths(
+    global_config_filename="config.yaml",
+    project_config_filename="config.yaml",
+    user_config_filename="config.local.yaml",
+    project_subdir_name=".nova",
+    config_dir_name="nova",
+)
 
 
 def write_yaml(path: Path, content: str) -> None:
@@ -71,7 +80,7 @@ feature:
     monkeypatch.setenv("NOVA_CONFIG__FEATURE__RETRIES", "5")
     monkeypatch.setenv("NOVA_CONFIG__LIST_VALUE__ITEMS", '["x", "y"]')
 
-    store = FileConfigStore(working_dir=working_dir)
+    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
     result = store.load()
 
     assert is_ok(result)
@@ -138,7 +147,7 @@ marketplaces:
     working_dir = project_root / "src"
     working_dir.mkdir(parents=True)
 
-    store = FileConfigStore(working_dir=working_dir)
+    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
     result = store.load()
 
     assert is_ok(result)
@@ -154,7 +163,7 @@ def test_file_config_store_returns_defaults_when_no_files_exist(tmp_path: Path, 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path, raising=False)
 
-    store = FileConfigStore()
+    store = FileConfigStore(working_dir=Path.cwd(), config=TEST_CONFIG)
     result = store.load()
 
     assert is_ok(result)
@@ -169,7 +178,7 @@ def test_file_config_store_returns_error_on_invalid_yaml(tmp_path: Path, monkeyp
     global_config.write_text("foo: [")  # Invalid YAML
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path)
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
     result = store.load()
 
     assert is_err(result)
@@ -192,7 +201,7 @@ def test_file_config_store_returns_error_on_non_mapping_root(tmp_path: Path, mon
     project_config = project_config_dir / "config.yaml"
     write_yaml_dict(project_config, ["not", "a", "mapping"])  # List instead of dict
 
-    store = FileConfigStore(working_dir=project_root)
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
     result = store.load()
 
     assert is_err(result)
@@ -217,7 +226,7 @@ def test_file_config_store_returns_error_on_falsy_non_mapping_root(
     project_config = project_config_dir / "config.yaml"
     write_yaml(project_config, "false\n")
 
-    store = FileConfigStore(working_dir=project_root)
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
     result = store.load()
 
     assert is_err(result)
@@ -247,7 +256,7 @@ user_scope: true
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root)
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
 
     original = FileConfigStore._load_scope_config
     called_scopes: list[ConfigScope] = []
@@ -289,7 +298,7 @@ def test_file_config_store_returns_error_on_io_failure(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(Path, "read_text", fake_read_text, raising=False)
 
-    store = FileConfigStore(working_dir=tmp_path)
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
     result = store.load()
 
     assert is_err(result)
@@ -327,7 +336,7 @@ feature:
     nested_dir = project_root / "src" / "nova" / "cli"
     nested_dir.mkdir(parents=True)
 
-    store = FileConfigStore(working_dir=nested_dir)
+    store = FileConfigStore(working_dir=nested_dir, config=TEST_CONFIG)
     result = store.load()
 
     assert is_ok(result)
@@ -366,7 +375,7 @@ from_project: true
     monkeypatch.setattr(Path, "cwd", lambda: working_dir, raising=False)
 
     # Don't provide working_dir, should default to cwd
-    store = FileConfigStore()
+    store = FileConfigStore(working_dir=Path.cwd(), config=TEST_CONFIG)
     result = store.load()
 
     assert is_ok(result)
@@ -395,7 +404,7 @@ only_global: true
     working_dir = tmp_path / "no_project"
     working_dir.mkdir()
 
-    store = FileConfigStore(working_dir=working_dir)
+    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
     result = store.load()
 
     # Should succeed with just global config
@@ -404,3 +413,78 @@ only_global: true
     data = config.model_dump()
     assert data["only_global"] is True
     assert data["marketplaces"] == []
+
+
+def test_get_marketplace_config_returns_merged_marketplaces(tmp_path: Path, monkeypatch) -> None:
+    """Test that get_marketplace_config returns merged marketplace list from all scopes."""
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    write_yaml(
+        global_dir / "config.yaml",
+        """
+marketplaces:
+  - name: official
+    source:
+      type: github
+      repo: owner/official
+""",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    project_root = tmp_path / "project"
+    project_config_dir = project_root / ".nova"
+    project_config_dir.mkdir(parents=True)
+    local_marketplace_dir = project_root / "marketplaces" / "internal"
+    local_marketplace_dir.mkdir(parents=True)
+    write_yaml(
+        project_config_dir / "config.yaml",
+        f"""
+marketplaces:
+  - name: internal
+    source:
+      type: local
+      path: "{local_marketplace_dir}"
+""",
+    )
+
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    result = store.get_marketplace_config()
+
+    assert is_ok(result)
+    marketplaces = result.unwrap()
+    assert len(marketplaces) == 2
+    assert marketplaces[0].name == "official"
+    assert marketplaces[0].source.repo == "owner/official"
+    assert marketplaces[1].name == "internal"
+    assert str(marketplaces[1].source.path) == str(local_marketplace_dir)
+
+
+def test_get_marketplace_config_returns_empty_list_when_no_marketplaces(tmp_path: Path, monkeypatch) -> None:
+    """Test that get_marketplace_config returns empty list when no marketplaces configured."""
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    write_yaml(global_dir / "config.yaml", "")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    result = store.get_marketplace_config()
+
+    assert is_ok(result)
+    marketplaces = result.unwrap()
+    assert marketplaces == []
+
+
+def test_get_marketplace_config_propagates_config_errors(tmp_path: Path, monkeypatch) -> None:
+    """Test that get_marketplace_config propagates errors from load()."""
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    global_config = global_dir / "config.yaml"
+    write_yaml(global_config, "invalid: [")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    result = store.get_marketplace_config()
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, ConfigYamlError)

@@ -92,6 +92,7 @@ def _extract_marketplace_name(entry: object) -> str | None:
         return name if isinstance(name, str) else None
     return getattr(entry, "name", None)
 
+
 _LIST_MERGE_STRATEGIES: dict[str, ListMergeStrategy] = {
     "marketplaces": _merge_marketplaces,
 }

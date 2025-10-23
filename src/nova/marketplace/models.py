@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, DirectoryPath, EmailStr
 from pydantic_extra_types.semantic_version import SemanticVersion
 
-from nova.utils.types import DirectUrl, GitHubRepo, GitUrl, NonEmptyString
+from nova.utils.types import GitHubRepo, GitUrl, NonEmptyString
 
 
 class MarketplaceSourceType(str, Enum):
@@ -18,7 +18,6 @@ class MarketplaceSourceType(str, Enum):
     GITHUB = "github"
     GIT = "git"
     LOCAL = "local"
-    URL = "url"
 
 
 class MarketplaceScope(str, Enum):
@@ -70,16 +69,7 @@ class LocalMarketplaceSource(BaseModel):
     path: DirectoryPath
 
 
-class URLMarketplaceSource(BaseModel):
-    """Direct URL marketplace source (stored in config.yaml)."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    type: Literal["url"] = "url"
-    url: DirectUrl
-
-
-MarketplaceSource = GitHubMarketplaceSource | GitMarketplaceSource | LocalMarketplaceSource | URLMarketplaceSource
+MarketplaceSource = GitHubMarketplaceSource | GitMarketplaceSource | LocalMarketplaceSource
 
 
 class BundleEntry(BaseModel):
@@ -129,7 +119,7 @@ class MarketplaceState(BaseModel):
     last_updated: str
 
 
-class MarketplaceError(BaseModel):
+class BaseMarketplaceError(BaseModel):
     """Base marketplace error model."""
 
     model_config = ConfigDict(extra="forbid")
@@ -137,33 +127,43 @@ class MarketplaceError(BaseModel):
     message: str
 
 
-class MarketplaceNotFoundError(MarketplaceError):
+class MarketplaceNotFoundError(BaseMarketplaceError):
     """Marketplace not found."""
 
     name_or_source: str
 
 
-class MarketplaceAddError(MarketplaceError):
+class MarketplaceAddError(BaseMarketplaceError):
     """Error adding marketplace (clone, fetch, or validation failed)."""
 
     source: str
 
 
-class MarketplaceAlreadyExistsError(MarketplaceError):
+class MarketplaceAlreadyExistsError(BaseMarketplaceError):
     """Marketplace with this name already exists."""
 
     name: str
     existing_source: str
 
 
-class MarketplaceInvalidManifestError(MarketplaceError):
+class MarketplaceInvalidManifestError(BaseMarketplaceError):
     """Invalid or missing marketplace.json."""
 
     source: str
 
 
-MarketplaceErrorType = (
-    MarketplaceNotFoundError | MarketplaceAddError | MarketplaceAlreadyExistsError | MarketplaceInvalidManifestError
+class MarketplaceSourceParseError(BaseMarketplaceError):
+    """Failed to parse marketplace source string."""
+
+    source: str
+
+
+MarketplaceError = (
+    MarketplaceNotFoundError
+    | MarketplaceAddError
+    | MarketplaceAlreadyExistsError
+    | MarketplaceInvalidManifestError
+    | MarketplaceSourceParseError
 )
 
 
@@ -177,14 +177,13 @@ __all__ = [
     "MarketplaceAddError",
     "MarketplaceAlreadyExistsError",
     "MarketplaceError",
-    "MarketplaceErrorType",
     "MarketplaceInfo",
     "MarketplaceInvalidManifestError",
     "MarketplaceManifest",
     "MarketplaceNotFoundError",
     "MarketplaceScope",
     "MarketplaceSource",
+    "MarketplaceSourceParseError",
     "MarketplaceSourceType",
     "MarketplaceState",
-    "URLMarketplaceSource",
 ]
