@@ -158,12 +158,19 @@ class MarketplaceSourceParseError(BaseMarketplaceError):
     source: str
 
 
+class MarketplaceFetchError(BaseMarketplaceError):
+    """Failed to fetch marketplace from source."""
+
+    source: str
+
+
 MarketplaceError = (
     MarketplaceNotFoundError
     | MarketplaceAddError
     | MarketplaceAlreadyExistsError
     | MarketplaceInvalidManifestError
     | MarketplaceSourceParseError
+    | MarketplaceFetchError
 )
 
 
@@ -177,6 +184,7 @@ __all__ = [
     "MarketplaceAddError",
     "MarketplaceAlreadyExistsError",
     "MarketplaceError",
+    "MarketplaceFetchError",
     "MarketplaceInfo",
     "MarketplaceInvalidManifestError",
     "MarketplaceManifest",

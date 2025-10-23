@@ -1,11 +1,15 @@
-"""Configuration path discovery utilities."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
-from nova.utils.paths import PathsConfig, get_global_config_root, get_project_root, resolve_project_dir
+from nova.utils.paths import (
+    PathsConfig,
+    get_global_config_root,
+    get_project_root,
+    resolve_project_dir,
+    resolve_working_directory,
+)
 
 from .config import FileConfigPaths
 
@@ -18,7 +22,7 @@ class ConfigPaths:
 
 
 def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ConfigPaths:
-    start_dir = _normalize_start_dir(working_dir)
+    start_dir = resolve_working_directory(working_dir)
 
     paths_config = PathsConfig(
         config_dir_name=config.config_dir_name,
@@ -34,16 +38,6 @@ def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ConfigP
         project_path=project_path,
         user_path=user_path,
     )
-
-
-def _normalize_start_dir(working_dir: Path | None) -> Path:
-    base = working_dir or Path.cwd()
-    if base.is_file():
-        base = base.parent
-    try:
-        return base.resolve(strict=False)
-    except OSError:
-        return base
 
 
 def _resolve_global_config(config: FileConfigPaths, paths_config: PathsConfig) -> Path | None:

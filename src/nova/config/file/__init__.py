@@ -1,5 +1,4 @@
-"""File-based configuration implementation."""
-
+from .config import FileConfigPaths
 from .store import FileConfigStore
 
-__all__ = ["FileConfigStore"]
+__all__ = ["FileConfigPaths", "FileConfigStore"]

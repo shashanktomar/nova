@@ -5,8 +5,8 @@ from typing import Literal
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from nova.config.file.config import FileConfigPaths
-from nova.utils.paths import PathsConfig
+from nova.config.file import FileConfigPaths
+from nova.utils import PathsConfig
 
 
 class AppInfo(BaseModel):

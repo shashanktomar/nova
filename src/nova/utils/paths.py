@@ -48,3 +48,13 @@ def resolve_working_directory(working_dir: Path | None) -> Path:
         return base.resolve(strict=False)
     except OSError:
         return base
+
+
+def get_data_directory(config: PathsConfig) -> Path:
+    """Get XDG data directory for Nova.
+
+    Returns ~/.local/share/nova (or XDG_DATA_HOME/nova if set).
+    """
+    xdg_data = os.getenv("XDG_DATA_HOME")
+    base_dir = Path(xdg_data).expanduser() if xdg_data else Path.home() / ".local" / "share"
+    return base_dir / config.config_dir_name

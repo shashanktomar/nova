@@ -6,7 +6,33 @@ import re
 import subprocess
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from nova.utils.functools.models import Err, Ok, Result
+
+
+class GitError(BaseModel):
+    """Base error for git operations."""
+
+    message: str
+
+
+class GitNotInstalledError(GitError):
+    """Git command not found."""
+
+    pass
+
+
+class GitCloneError(GitError):
+    """Failed to clone repository."""
+
+    url: str
+
+
+class GitVersionError(GitError):
+    """Failed to get git version."""
+
+    pass
 
 
 def is_git_installed() -> bool:
@@ -22,13 +48,7 @@ def is_git_installed() -> bool:
         return False
 
 
-def get_git_version() -> Result[str, str]:
-    """Get installed git version.
-
-    Returns:
-        Ok(version): Git version string (e.g., "2.39.0")
-        Err(message): Git not installed or version check failed
-    """
+def get_git_version() -> Result[str, GitError]:
     try:
         result = subprocess.run(
             ["git", "--version"],
@@ -41,12 +61,14 @@ def get_git_version() -> Result[str, str]:
         if match:
             return Ok(match.group(1))
 
-        return Err(f"Could not parse git version from: {result.stdout}")
+        return Err(
+            GitVersionError(message=f"Could not parse git version from: {result.stdout}")
+        )
 
     except FileNotFoundError:
-        return Err("git command not found")
+        return Err(GitNotInstalledError(message="git command not found"))
     except subprocess.CalledProcessError as e:
-        return Err(f"Failed to get git version: {e.stderr}")
+        return Err(GitVersionError(message=f"Failed to get git version: {e.stderr}"))
 
 
 def clone_repository(
@@ -54,20 +76,9 @@ def clone_repository(
     destination: Path,
     *,
     depth: int = 1,
-) -> Result[Path, str]:
-    """Clone a git repository to destination.
-
-    Args:
-        url: Git repository URL
-        destination: Local directory to clone to
-        depth: Clone depth (default: 1 for shallow clone)
-
-    Returns:
-        Ok(Path): Path to cloned repository
-        Err(message): Clone failed with error message
-    """
+) -> Result[Path, GitError]:
     if destination.exists():
-        return Err(f"Destination already exists: {destination}")
+        return Err(GitCloneError(url=url, message=f"Destination already exists: {destination}"))
 
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -82,9 +93,9 @@ def clone_repository(
         return Ok(destination)
 
     except FileNotFoundError:
-        return Err("git command not found. Please install git.")
+        return Err(GitNotInstalledError(message="git command not found. Please install git."))
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.strip() if e.stderr else "Unknown error"
-        return Err(f"Failed to clone repository: {stderr}")
+        return Err(GitCloneError(url=url, message=f"Failed to clone repository: {stderr}"))
     except Exception as e:
-        return Err(f"Unexpected error cloning repository: {e}")
+        return Err(GitCloneError(url=url, message=f"Unexpected error cloning repository: {e}"))

@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
-from nova.utils.functools.models import Result
+from nova.utils.functools.models import Result, is_err
 
-from .models import MarketplaceError, MarketplaceInfo, MarketplaceScope
+from .fetcher import fetch_marketplace
+from .models import (
+    LocalMarketplaceSource,
+    MarketplaceError,
+    MarketplaceInfo,
+    MarketplaceScope,
+)
 from .protocol import MarketplaceConfigProvider
+from .sources import parse_source
+from .validator import validate_marketplace
 
 
 class Marketplace:
@@ -37,6 +46,27 @@ class Marketplace:
         8. Add marketplace entry to appropriate config file (global or project config.yaml)
         9. Return MarketplaceInfo with marketplace details
         """
+        parsed_source = parse_source(source, working_dir=working_dir)
+        if is_err(parsed_source):
+            return parsed_source
+
+        marketplace_source = parsed_source.unwrap()
+
+        if isinstance(marketplace_source, LocalMarketplaceSource):
+            marketplace_dir = marketplace_source.path
+        else:
+            temp_dir = Path(tempfile.mkdtemp(prefix="nova-marketplace-"))
+            fetch_result = fetch_marketplace(marketplace_source, temp_dir)
+            if is_err(fetch_result):
+                return fetch_result
+            marketplace_dir = fetch_result.unwrap()
+
+        manifest_result = validate_marketplace(marketplace_dir)
+        if is_err(manifest_result):
+            return manifest_result
+
+        _manifest = manifest_result.unwrap()
+
         raise NotImplementedError
 
     def remove(
