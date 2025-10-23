@@ -631,17 +631,22 @@ result = marketplace.add("anthropics/nova-bundles", scope=MarketplaceScope.GLOBA
 - [x] Config integration: marketplaces field in GlobalConfig, ProjectConfig, NovaConfig
 - [x] Config merger: concatenates marketplace lists across scopes
 - [x] Public API signatures defined (src/nova/marketplace/__init__.py)
+- [x] Source parser: parse source string → typed MarketplaceSource (src/nova/marketplace/sources.py)
+- [x] Fetcher: clone/download marketplaces (src/nova/marketplace/fetcher.py)
+- [x] Validator: validate marketplace.json (src/nova/marketplace/validator.py)
 
 ### Remaining
-- [ ] Source parser: parse source string → typed MarketplaceSource
-- [ ] Fetcher: clone/download marketplaces, validate marketplace.json
 - [ ] State management: read/write marketplaces/data.json
 - [ ] Implement public API functions (add, remove, list, get)
+  - [ ] add() - in progress (partially implemented)
+  - [ ] remove() - not started
+  - [ ] list() - not started
+  - [ ] get() - not started
 - [ ] CLI commands: src/nova/cli/commands/marketplace.py
 - [ ] Tests for all components
 - [ ] Documentation
 
-**Next:** Start with source parser in `src/nova/marketplace/parsers.py`
+**Next:** Complete state management module and finish add() implementation
 
 ## References
 
