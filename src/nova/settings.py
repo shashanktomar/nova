@@ -7,24 +7,13 @@ This module provides centralized app-level configuration including:
 Settings are loaded from environment variables and .env files using Pydantic Settings.
 
 Environment Variables:
-    NOVA_APP__PROJECT_NAME: Override project name (default: nova)
-    NOVA_APP__VERSION: Override version (default: 0.1.0)
-    NOVA_APP__ENVIRONMENT: Set environment - test/dev/prod (default: dev)
-    NOVA_PATHS__CONFIG_DIR_NAME: Override config directory name (default: nova)
-    NOVA_PATHS__GLOBAL_CONFIG_FILENAME: Override global config filename (default: config.yaml)
-    NOVA_PATHS__PROJECT_CONFIG_FILENAME: Override project config filename (default: nova.yaml)
-    NOVA_PATHS__PROJECT_SUBDIR_NAME: Override project subdirectory (default: .nova)
+    All settings can be overridden using environment variables with the prefix NOVA_.
+    Use double underscores (__) for nested settings.
 
-Example .env file:
-    NOVA_APP__ENVIRONMENT=prod
-    NOVA_APP__VERSION=1.0.0
-    NOVA_PATHS__CONFIG_DIR_NAME=.config
-
-Usage:
-    from nova.settings import settings
-
-    print(f"Running {settings.app.project_name} v{settings.app.version}")
-    print(f"Config dir: {settings.paths.config_dir_name}")
+    Examples:
+        NOVA_APP__ENVIRONMENT=prod
+        NOVA_PATHS__CONFIG_DIR_NAME=nova
+        NOVA_PATHS__DATA_DIR_NAME=nova
 """
 
 from typing import Literal
@@ -48,21 +37,34 @@ class AppInfo(BaseModel):
 
 
 class AppPaths(BaseModel):
-    """Path configuration for Nova.
+    """Path configuration for Nova following XDG Base Directory standard.
 
     Attributes:
-        config_dir_name: Directory name for global config (e.g., ~/.config/nova)
+        config_dir_name: Directory name for config (e.g., ~/.config/nova)
+        data_dir_name: Directory name for data (e.g., ~/.local/share/nova)
         project_subdir_name: Subdirectory name for project configs
         global_config_filename: Filename for global config file
         project_config_filename: Filename for project-level config file (in .nova subdir)
         user_config_filename: Filename for user-specific config file (in .nova subdir)
+        marketplaces_dir_name: Directory name for marketplace clones (in data dir)
+        marketplaces_metadata_filename: Filename for marketplace metadata
     """
 
+    # XDG Base Directory paths
     config_dir_name: str = "nova"
+    data_dir_name: str = "nova"
+
+    # Project paths
     project_subdir_name: str = ".nova"
+
+    # Config filenames
     global_config_filename: str = "config.yaml"
     project_config_filename: str = "config.yaml"
     user_config_filename: str = "config.local.yaml"
+
+    # Marketplace data paths
+    marketplaces_dir_name: str = "marketplaces"
+    marketplaces_metadata_filename: str = "data.json"
 
 
 class Settings(BaseSettings):

@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 import typer
 import yaml
 
-from nova.config import ConfigError, parse_config
+from nova.config import ConfigError, FileConfigStore
 from nova.utils.functools.models import is_err
 
 FormatOption = Annotated[
@@ -40,7 +40,8 @@ def show(
 ) -> None:
     """Show effective configuration after merging all scopes."""
     selected_format = format.lower()
-    result = parse_config(working_dir=working_dir)
+    store = FileConfigStore(working_dir=working_dir)
+    result = store.load()
     if is_err(result):
         _handle_error(result.err())
         raise typer.Exit(code=1)

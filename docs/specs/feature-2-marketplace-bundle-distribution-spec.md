@@ -192,60 +192,66 @@ nova marketplace remove https://git.url/repo
 ---
 
 ### Decision 6: Marketplace Storage Structure
-**Date:** 2025-10-21
+**Date:** 2025-10-23 (Updated)
 
-**Both global and project follow identical structure:**
+**Directory structure follows XDG Base Directory standard:**
 
 ```
-~/.config/nova/                    .nova/
-├── config.yaml (YAML)             ├── config.yaml (YAML)
-└── marketplaces/                  └── marketplaces/
-    ├── data.json                      ├── data.json
-    ├── official/                      └── project-marketplace/
-    │   ├── marketplace.json               ├── marketplace.json (JSON)
-    │   └── bundles/                       └── bundles/
-    │       └── coding-python/                 └── custom-bundle/
-    │           └── .nova/                         └── .nova/
-    │               └── bundle.json                    └── bundle.json (JSON)
-    └── company-internal/
+~/.config/nova/                    ~/.local/share/nova/              .nova/
+├── config.yaml (YAML)             └── marketplaces/                 └── config.yaml (YAML)
+                                       ├── data.json
+                                       ├── official/
+                                       │   ├── marketplace.json
+                                       │   └── bundles/
+                                       │       └── coding-python/
+                                       │           └── .nova/
+                                       │               └── bundle.json
+                                       └── company-internal/
+                                           ├── marketplace.json
+                                           └── bundles/
 ```
 
 **Key principles:**
+- **Configuration and data are separated** following XDG standard
+  - Config: `~/.config/nova/` (XDG_CONFIG_HOME)
+  - Data: `~/.local/share/nova/` (XDG_DATA_HOME)
+- **ALL marketplace clones live in global data directory** (`~/.local/share/nova/marketplaces/`)
+- **Project config references global marketplaces** - no project-specific data directory
 - **Bundles ONLY exist inside marketplaces** - no separate `bundles/` directory
-- **Marketplaces are cloned** to `marketplaces/<name>/` directory
-- **Marketplace metadata** tracked in `marketplaces/data.json`
 - **Bundle "installation"** = adding reference in config, not copying files
-- **Same structure** for global (`~/.config/nova/`) and project (`.nova/`)
 
 **Workflow:**
-1. `nova marketplace add owner/repo --scope global` → Clone to `~/.config/nova/marketplaces/<name>/`
-2. Marketplace metadata stored in `marketplaces/data.json`
-3. Marketplace config entry added to config.yaml
+1. `nova marketplace add owner/repo --scope global` → Clone to `~/.local/share/nova/marketplaces/<name>/`
+2. Marketplace metadata stored in `~/.local/share/nova/marketplaces/data.json`
+3. Marketplace config entry added to `~/.config/nova/config.yaml`
+4. `nova marketplace add owner/repo --scope project` → Clone to `~/.local/share/nova/marketplaces/<name>/`
+5. Marketplace config entry added to `.nova/config.yaml`
 
 **Config vs Data separation:**
-- **config.yaml**: User-facing configuration (which marketplaces/bundles to use)
-- **marketplaces/data.json**: Internal app state (clone location, last update time, etc.)
+- **config.yaml**: User-facing configuration (committable to git, can be in dotfiles)
+- **data.json**: Internal app state (NOT committable, local cache)
 
 **Marketplace metadata file (internal state):**
 ```json
-// marketplaces/data.json
+// ~/.local/share/nova/marketplaces/data.json
 {
   "official": {
     "source": {
       "type": "github",
       "repo": "nova-team/bundles"
     },
-    "installLocation": "/Users/user/.config/nova/marketplaces/official",
+    "installLocation": "/Users/user/.local/share/nova/marketplaces/official",
     "lastUpdated": "2025-10-21T12:00:00Z"
   }
 }
 ```
 
 **Rationale:**
-- Bundles stay in marketplace repos (easy updates via git pull)
-- No duplication - reference, don't copy
-- Consistent global/project structure
-- Mirrors Claude Code's proven pattern
+- Follows XDG Base Directory standard (like kubectl, helm, gh CLI)
+- Clear separation: config (committable) vs data (local state)
+- Users can manage config in dotfiles without including data
+- No duplication: marketplace clones are shared globally
+- Project config is committable, data is always local
 
 ---
 
@@ -577,18 +583,27 @@ def get_marketplace(
 
 [TBD - will design after public API]
 
-## Implementation Checklist
+## Implementation Status
 
-- [ ] Define marketplace.json schema
-- [ ] Implement marketplace source configuration in config.yaml
-- [ ] Extend `nova.config` models to include `marketplaces: list[MarketplaceConfig]`
-- [ ] Implement marketplace data.json management
-- [ ] Implement marketplace add command (clone + config update)
-- [ ] Implement marketplace remove command (cleanup + config update)
-- [ ] Implement marketplace list command
-- [ ] Implement marketplace show command
-- [ ] Write comprehensive tests
-- [ ] Document usage patterns
+**Last Updated:** 2025-10-23
+
+### Completed
+- [x] All data models and error types (src/nova/marketplace/models.py)
+- [x] MarketplaceConfig model (src/nova/marketplace/config.py)
+- [x] Config integration: marketplaces field in GlobalConfig, ProjectConfig, NovaConfig
+- [x] Config merger: concatenates marketplace lists across scopes
+- [x] Public API signatures defined (src/nova/marketplace/__init__.py)
+
+### Remaining
+- [ ] Source parser: parse source string → typed MarketplaceSource
+- [ ] Fetcher: clone/download marketplaces, validate marketplace.json
+- [ ] State management: read/write marketplaces/data.json
+- [ ] Implement public API functions (add, remove, list, get)
+- [ ] CLI commands: src/nova/cli/commands/marketplace.py
+- [ ] Tests for all components
+- [ ] Documentation
+
+**Next:** Start with source parser in `src/nova/marketplace/parsers.py`
 
 ## References
 

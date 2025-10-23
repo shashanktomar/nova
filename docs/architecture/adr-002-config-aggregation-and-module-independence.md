@@ -1,15 +1,17 @@
 ---
 status: accepted
 date: 2025-10-23
-decision: Config Module Owns Aggregation, Feature Modules Remain Config-Agnostic
+updated: 2025-10-23
+decision: Config Store Protocol and Module Independence
 context: Feature 2 (Marketplace & Bundle Distribution)
 ---
 
-# ADR-002: Config Aggregation and Module Independence
+# ADR-002: Config Store Protocol and Module Independence
 
 ## Status
 
 **Accepted** - 2025-10-23
+**Updated** - 2025-10-23 (Added ConfigStore protocol)
 
 ## Context
 
@@ -24,26 +26,49 @@ Option 2 keeps feature modules independent, but it forces each consumer to reimp
 
 ## Decision
 
-**`nova.config` remains responsible for aggregating and validating configuration across scopes. Feature modules (e.g., `nova.marketplace`) expose typed models that `nova.config` may depend on, but feature modules must not depend on `nova.config`.**
+**Configuration storage and retrieval is abstracted behind the `ConfigStore` protocol. Feature modules depend on this protocol, not on specific implementations.**
+
+Key principles:
+
+1. **ConfigStore Protocol** - `nova.config` defines a `ConfigStore` protocol with a single method: `load() -> Result[NovaConfig, ConfigError]`
+2. **File-based Implementation** - `nova.config.file.FileConfigStore` implements the protocol for YAML file-based configuration
+3. **Feature Module Independence** - Feature modules (e.g., `nova.marketplace`) depend on the `ConfigStore` protocol, not on file-based implementation
+4. **Consumer Choice** - Consumers (CLI, library users) choose which `ConfigStore` implementation to use
 
 Practical implications:
 
-- `nova.config` may import models and helper types from feature packages to describe configuration sections (e.g., `MarketplaceConfig`).
-- Feature modules receive configuration as arguments (typically instances of their own config models) and must not call `parse_config()` or otherwise try to read YAML themselves.
-- Consumers that already have a parsed configuration (e.g., applications embedding Nova) can construct the typed feature configs manually and pass them to feature APIs without going through `nova.config`.
+- `nova.config` exposes both the `ConfigStore` protocol and `FileConfigStore` implementation
+- Feature modules accept a `ConfigStore` instance (dependency injection) rather than reading files directly
+- `nova.config` may import models from feature packages (e.g., `MarketplaceConfig`) to describe configuration sections
+- CLI uses `FileConfigStore` directly for file-based configuration
+- Library users can implement their own `ConfigStore` (e.g., database-backed) and pass it to feature modules
 
 ## Rationale
 
-1. **Single responsibility** – All configuration discovery and scope merging lives in one place (`nova.config`). Feature modules focus on business logic.
-2. **Library friendliness** – Marketplace APIs accept configuration data supplied by callers, so they can be reused in contexts where the caller manages configuration manually.
-3. **Acyclic dependencies** – Allowing `nova.marketplace` to call back into `nova.config` would create cyclic imports. By keeping the dependency one-directional (`nova.config` → feature modules), package boundaries remain clear.
-4. **Validation reuse** – Feature modules own their configuration schemas. `nova.config` reuses those models instead of duplicating field validation logic.
+1. **Abstraction** – The `ConfigStore` protocol decouples feature modules from file-based implementation. Feature modules work with any configuration source.
+2. **Library friendliness** – Library users can implement `ConfigStore` backed by databases, remote services, or in-memory structures without changing feature module code.
+3. **Testability** – Tests can provide mock `ConfigStore` implementations without touching the filesystem.
+4. **Single responsibility** – File-specific logic (YAML parsing, path discovery) is isolated in `FileConfigStore`. Feature modules don't need to know about files.
+5. **Acyclic dependencies** – Feature modules depend on the protocol in `nova.config`, not on implementations. Dependency flows one direction: `nova.marketplace` → `nova.config.ConfigStore` protocol.
+6. **Validation reuse** – Feature modules own their configuration schemas (e.g., `MarketplaceConfig`). `nova.config` imports and uses these models.
 
 ## Consequences
 
-- When a new feature introduces configuration, its package must publish the relevant config models, and `nova.config` must import and embed them.
-- Feature APIs should always accept configuration objects (or the specific data they require) rather than reading files.
-- Tests that exercise configuration-sensitive behaviour can construct feature config models directly without invoking the full config loader.
+### Benefits
+- **Flexibility**: Library users can implement custom `ConfigStore` backends (database, remote API, etc.) without modifying Nova's core
+- **Testability**: Tests can inject mock `ConfigStore` implementations for isolated testing
+- **Clean architecture**: File-based implementation details are isolated in `nova.config.file` submodule
+- **Reusability**: Feature modules work in any context where a `ConfigStore` is provided
+
+### Trade-offs
+- Feature modules must accept `ConfigStore` as a dependency (dependency injection pattern)
+- `nova.config` must import feature config models (e.g., `MarketplaceConfig`), creating a one-way dependency
+- New configuration features require updating both the feature module (models) and `nova.config` (aggregation)
+
+### Implementation Notes
+- CLI uses `FileConfigStore` directly for default file-based behavior
+- Feature module APIs accept `ConfigStore` instances: `add_marketplace(source, config_store=...)`
+- Tests can create mock stores: `class MockConfigStore: def load(self) -> Result[NovaConfig, ConfigError]: ...`
 
 ## Related Documents
 

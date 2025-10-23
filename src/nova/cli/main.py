@@ -18,5 +18,3 @@ def _root_callback(ctx: typer.Context) -> None:
 def main() -> None:
     """Entrypoint for the nova CLI."""
     app()
-
-

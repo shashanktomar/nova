@@ -35,16 +35,10 @@ nova *args:
 test:
     uv run pytest
 
-# Run e2e tests
+# Run tests with coverage report
 [group('test and lint')]
-test-e2e:
-    # uv run pytest -m e2e --capture=no
-    uv run pytest -m e2e -v
-
-# Run only unit tests
-[group('test and lint')]
-test-unit:
-    uv run pytest -m "not e2e"
+test-cov:
+    uv run pytest --cov=src/nova --cov-report=term-missing --cov-report=html
 
 # Format code
 [group('test and lint')]
@@ -73,7 +67,7 @@ lint-all: lockfile-check lint check-types
 
 # Run test and all code quality checks
 [group('test and lint')]
-check: lint-all test-unit
+check: lint-all test
 
 ###############################################
 ############### Utilities #####################

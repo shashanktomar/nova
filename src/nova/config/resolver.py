@@ -6,6 +6,8 @@ import os
 
 import yaml
 
+from nova.utils.dicts import deep_merge
+
 from .models import NovaConfig
 
 ENV_PREFIX = "NOVA_CONFIG__"
@@ -32,7 +34,7 @@ def apply_env_overrides(config: NovaConfig) -> NovaConfig:
     if not override_data:
         return config
 
-    merged = _deep_merge(dict(config.model_dump()), override_data)
+    merged = deep_merge(dict(config.model_dump()), override_data)
     return NovaConfig.model_validate(merged)
 
 
@@ -54,15 +56,3 @@ def _parse_env_value(raw: str) -> object:
     except yaml.YAMLError:
         return raw
     return parsed
-
-
-def _deep_merge(base: JSONDict, override: JSONDict) -> JSONDict:
-    result = base.copy()
-    for key, value in override.items():
-        existing = result.get(key)
-        if isinstance(existing, dict) and isinstance(value, dict):
-            result[key] = _deep_merge(dict(existing), dict(value))
-        else:
-            result[key] = value
-    return result
-

@@ -27,7 +27,7 @@ def discover_config_paths(working_dir: Path | None = None) -> ConfigPaths:
     project_path, user_path = _resolve_project_configs(project_root)
 
     return ConfigPaths(
-     global_path=global_path,
+        global_path=global_path,
         project_path=project_path,
         user_path=user_path,
     )

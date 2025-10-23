@@ -6,6 +6,7 @@ from pathlib import Path
 
 from nova.utils.functools.models import Result
 
+from .config import MarketplaceConfig
 from .models import (
     BundleEntry,
     Contact,
@@ -32,6 +33,7 @@ __all__ = [
     "LocalMarketplaceSource",
     "MarketplaceAddError",
     "MarketplaceAlreadyExistsError",
+    "MarketplaceConfig",
     "MarketplaceErrorType",
     "MarketplaceInfo",
     "MarketplaceInvalidManifestError",
@@ -82,4 +84,3 @@ def get_marketplace(
 ) -> Result[MarketplaceInfo, MarketplaceErrorType]:
     """Get details for a specific marketplace."""
     raise NotImplementedError
-

@@ -79,12 +79,7 @@ class URLMarketplaceSource(BaseModel):
     url: DirectUrl
 
 
-MarketplaceSource = (
-    GitHubMarketplaceSource
-    | GitMarketplaceSource
-    | LocalMarketplaceSource
-    | URLMarketplaceSource
-)
+MarketplaceSource = GitHubMarketplaceSource | GitMarketplaceSource | LocalMarketplaceSource | URLMarketplaceSource
 
 
 class BundleEntry(BaseModel):
@@ -133,6 +128,7 @@ class MarketplaceState(BaseModel):
     install_location: Path
     last_updated: str
 
+
 class MarketplaceError(BaseModel):
     """Base marketplace error model."""
 
@@ -167,10 +163,7 @@ class MarketplaceInvalidManifestError(MarketplaceError):
 
 
 MarketplaceErrorType = (
-    MarketplaceNotFoundError
-    | MarketplaceAddError
-    | MarketplaceAlreadyExistsError
-    | MarketplaceInvalidManifestError
+    MarketplaceNotFoundError | MarketplaceAddError | MarketplaceAlreadyExistsError | MarketplaceInvalidManifestError
 )
 
 
