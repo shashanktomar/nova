@@ -7,6 +7,7 @@ from pathlib import Path
 
 from nova.utils.functools.models import Err, Ok, Result
 from nova.utils.paths import PathsConfig, get_data_directory
+from nova.utils.types import JsonValue
 
 from .models import DataStoreError, DataStoreKeyNotFoundError, DataStoreReadError, DataStoreWriteError
 
@@ -14,11 +15,12 @@ from .models import DataStoreError, DataStoreKeyNotFoundError, DataStoreReadErro
 class FileDataStore:
     """File-based implementation of DataStore protocol."""
 
-    def __init__(self) -> None:
+    def __init__(self, namespace: str) -> None:
+        self._namespace = namespace
         self._config = PathsConfig(config_dir_name="nova", project_subdir_name=".nova")
 
-    def save(self, namespace: str, key: str, data: dict) -> Result[None, DataStoreError]:
-        data_file = self._get_data_file_path(namespace)
+    def save(self, key: str, data: JsonValue) -> Result[None, DataStoreError]:
+        data_file = self._get_data_file_path()
 
         try:
             data_file.parent.mkdir(parents=True, exist_ok=True)
@@ -36,20 +38,20 @@ class FileDataStore:
         except (OSError, json.JSONDecodeError) as e:
             return Err(
                 DataStoreWriteError(
-                    namespace=namespace,
+                    namespace=self._namespace,
                     message=f"Failed to save data: {e}",
                 )
             )
 
-    def load(self, namespace: str, key: str) -> Result[dict, DataStoreError]:
-        data_file = self._get_data_file_path(namespace)
+    def load(self, key: str) -> Result[JsonValue, DataStoreError]:
+        data_file = self._get_data_file_path()
 
         if not data_file.exists():
             return Err(
                 DataStoreKeyNotFoundError(
-                    namespace=namespace,
+                    namespace=self._namespace,
                     key=key,
-                    message=f"Key '{key}' not found in namespace '{namespace}'",
+                    message=f"Key '{key}' not found in namespace '{self._namespace}'",
                 )
             )
 
@@ -59,9 +61,9 @@ class FileDataStore:
             if key not in all_data:
                 return Err(
                     DataStoreKeyNotFoundError(
-                        namespace=namespace,
+                        namespace=self._namespace,
                         key=key,
-                        message=f"Key '{key}' not found in namespace '{namespace}'",
+                        message=f"Key '{key}' not found in namespace '{self._namespace}'",
                     )
                 )
 
@@ -70,13 +72,13 @@ class FileDataStore:
         except (OSError, json.JSONDecodeError) as e:
             return Err(
                 DataStoreReadError(
-                    namespace=namespace,
+                    namespace=self._namespace,
                     message=f"Failed to read data: {e}",
                 )
             )
 
-    def delete(self, namespace: str, key: str) -> Result[None, DataStoreError]:
-        data_file = self._get_data_file_path(namespace)
+    def delete(self, key: str) -> Result[None, DataStoreError]:
+        data_file = self._get_data_file_path()
 
         if not data_file.exists():
             return Ok(None)
@@ -93,11 +95,11 @@ class FileDataStore:
         except (OSError, json.JSONDecodeError) as e:
             return Err(
                 DataStoreWriteError(
-                    namespace=namespace,
+                    namespace=self._namespace,
                     message=f"Failed to delete data: {e}",
                 )
             )
 
-    def _get_data_file_path(self, namespace: str) -> Path:
+    def _get_data_file_path(self) -> Path:
         data_dir = get_data_directory(self._config)
-        return data_dir / namespace / "data.json"
+        return data_dir / self._namespace / "data.json"

@@ -7,6 +7,8 @@ from typing import Annotated, TypeVar
 
 from pydantic import Field, HttpUrl, StrictStr
 
+type JsonValue = dict[str, object] | list[object] | str | int | float | bool | None
+
 NonEmptyString = Annotated[StrictStr, Field(min_length=1, frozen=True)]
 
 T = TypeVar("T")
@@ -45,6 +47,7 @@ __all__ = [
     "DirectUrl",
     "GitHubRepo",
     "GitUrl",
+    "JsonValue",
     "NonEmptySequence",
     "NonEmptyString",
 ]

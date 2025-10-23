@@ -164,6 +164,18 @@ class MarketplaceFetchError(BaseMarketplaceError):
     source: str
 
 
+class MarketplaceConfigLoadError(BaseMarketplaceError):
+    """Failed to load marketplace configuration."""
+
+    scope: str
+
+
+class MarketplaceConfigSaveError(BaseMarketplaceError):
+    """Failed to save marketplace configuration."""
+
+    scope: str
+
+
 MarketplaceError = (
     MarketplaceNotFoundError
     | MarketplaceAddError
@@ -171,6 +183,8 @@ MarketplaceError = (
     | MarketplaceInvalidManifestError
     | MarketplaceSourceParseError
     | MarketplaceFetchError
+    | MarketplaceConfigLoadError
+    | MarketplaceConfigSaveError
 )
 
 
@@ -183,6 +197,8 @@ __all__ = [
     "LocalMarketplaceSource",
     "MarketplaceAddError",
     "MarketplaceAlreadyExistsError",
+    "MarketplaceConfigLoadError",
+    "MarketplaceConfigSaveError",
     "MarketplaceError",
     "MarketplaceFetchError",
     "MarketplaceInfo",

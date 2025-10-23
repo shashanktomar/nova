@@ -5,19 +5,25 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 
+from nova.datastore import DataStore
 from nova.utils.functools.models import Err, Ok, Result, is_err
 from nova.utils.paths import PathsConfig, get_data_directory
 
+from .config import MarketplaceConfig
 from .fetcher import fetch_marketplace
 from .models import (
     LocalMarketplaceSource,
+    MarketplaceAddError,
     MarketplaceAlreadyExistsError,
     MarketplaceError,
     MarketplaceInfo,
     MarketplaceScope,
     MarketplaceSource,
+    MarketplaceState,
 )
 from .protocol import MarketplaceConfigProvider
 from .sources import parse_source
@@ -27,9 +33,10 @@ from .validator import validate_marketplace
 class Marketplace:
     """Marketplace management API."""
 
-    def __init__(self, config_provider: MarketplaceConfigProvider) -> None:
-        """Initialize with a marketplace configuration provider."""
+    def __init__(self, config_provider: MarketplaceConfigProvider, datastore: DataStore) -> None:
+        """Initialize with a marketplace configuration provider and datastore."""
         self._config_provider = config_provider
+        self._datastore = datastore
 
     def add(
         self,
@@ -38,26 +45,16 @@ class Marketplace:
         scope: MarketplaceScope,
         working_dir: Path | None = None,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
-        """Add a marketplace source.
+        save_to_config = partial(self._save_to_config, scope=scope)
 
-        Flow:
-        1. ~~Parse the source string into a typed MarketplaceSource (github/git/local/url)~~ ✅
-        2. ~~Fetch or clone the marketplace repository to temp directory~~ ✅
-        3. ~~Read and validate marketplace.json from the cloned location~~ ✅
-        4. ~~Extract marketplace name from marketplace.json~~ ✅
-        5. ~~Get current marketplace config from all scopes via config provider~~ ✅
-        6. ~~Check if marketplace with same name already exists (error if duplicate)~~ ✅
-        7. ~~Move cloned marketplace from temp to final data directory location~~ ✅
-        8. Write marketplace metadata to data.json (install location, last updated)
-        9. Add marketplace entry to appropriate config file (global or project config.yaml)
-        10. Return MarketplaceInfo with marketplace details
-        """
         return (
             parse_source(source, working_dir=working_dir)
             .and_then(self._fetch_marketplace_to_temp)
             .and_then(self._validate_and_extract_manifest)
             .and_then(self._check_for_duplicate_name)
             .and_then(self._move_to_final_location)
+            .and_then(self._save_marketplace_state)
+            .and_then(save_to_config)
             .map(self._build_marketplace_info)
         )
 
@@ -158,6 +155,50 @@ class Marketplace:
         shutil.move(str(temp_dir), str(final_location))
 
         return final_location
+
+    def _save_marketplace_state(
+        self,
+        data: tuple[MarketplaceSource, Path, str],
+    ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
+        source, final_location, marketplace_name = data
+
+        state = MarketplaceState(
+            name=marketplace_name,
+            source=source,
+            install_location=final_location,
+            last_updated=datetime.now(UTC).isoformat(),
+        )
+
+        save_result = self._datastore.save(marketplace_name, state.model_dump(mode="json"))
+        if is_err(save_result):
+            return Err(
+                MarketplaceAddError(
+                    source=str(source),
+                    message=f"Failed to save marketplace state: {save_result.unwrap_err().message}",
+                )
+            )
+
+        return Ok((source, final_location, marketplace_name))
+
+    def _save_to_config(
+        self,
+        data: tuple[MarketplaceSource, Path, str],
+        scope: MarketplaceScope,
+    ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
+        source, final_location, marketplace_name = data
+
+        config = MarketplaceConfig(name=marketplace_name, source=source)
+        save_result = self._config_provider.add_marketplace_config(config, scope)
+
+        if is_err(save_result):
+            return Err(
+                MarketplaceAddError(
+                    source=str(source),
+                    message=f"Failed to save marketplace config: {save_result.unwrap_err().message}",
+                )
+            )
+
+        return Ok((source, final_location, marketplace_name))
 
     def _build_marketplace_info(
         self,

@@ -13,6 +13,7 @@ from nova.config.models import (
     ConfigValidationError,
     ConfigYamlError,
 )
+from nova.marketplace.models import MarketplaceConfigLoadError
 from nova.utils.functools.models import is_err, is_ok
 
 TEST_CONFIG = FileConfigPaths(
@@ -487,4 +488,5 @@ def test_get_marketplace_config_propagates_config_errors(tmp_path: Path, monkeyp
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, ConfigYamlError)
+    assert isinstance(error, MarketplaceConfigLoadError)
+    assert error.scope == "global"

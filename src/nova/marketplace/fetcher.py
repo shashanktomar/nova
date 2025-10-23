@@ -31,17 +31,13 @@ def _fetch_github(source: GitHubMarketplaceSource, destination: Path) -> FetchRe
     github_url = f"https://github.com/{source.repo}.git"
     result = clone_repository(github_url, destination)
 
-    return result.map_err(
-        lambda err: MarketplaceFetchError(source=source.repo, message=err.message)
-    )
+    return result.map_err(lambda err: MarketplaceFetchError(source=source.repo, message=err.message))
 
 
 def _fetch_git(source: GitMarketplaceSource, destination: Path) -> FetchResult:
     result = clone_repository(source.url, destination)
 
-    return result.map_err(
-        lambda err: MarketplaceFetchError(source=source.url, message=err.message)
-    )
+    return result.map_err(lambda err: MarketplaceFetchError(source=source.url, message=err.message))
 
 
 def _fetch_local(source: LocalMarketplaceSource) -> FetchResult:

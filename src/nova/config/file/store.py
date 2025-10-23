@@ -7,8 +7,10 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from nova.marketplace import MarketplaceConfig
+from nova.marketplace import MarketplaceConfig, MarketplaceScope
+from nova.marketplace.models import MarketplaceConfigLoadError, MarketplaceConfigSaveError, MarketplaceError
 from nova.utils.functools.models import Err, Ok, Result, is_err
+from nova.utils.paths import PathsConfig, get_global_config_root
 
 from ..merger import merge_configs
 from ..models import (
@@ -23,6 +25,7 @@ from ..models import (
     ProjectConfig,
     UserConfig,
 )
+from ..protocol import ConfigStore
 from ..resolver import apply_env_overrides
 from .config import FileConfigPaths
 from .paths import discover_config_paths
@@ -31,7 +34,7 @@ ScopeModel = GlobalConfig | ProjectConfig | UserConfig
 ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
 
 
-class FileConfigStore:
+class FileConfigStore(ConfigStore):
     def __init__(self, working_dir: Path, config: FileConfigPaths) -> None:
         self.working_dir = working_dir
         self.config = config
@@ -73,13 +76,72 @@ class FileConfigStore:
         effective = apply_env_overrides(merged)
         return Ok(effective)
 
-    def get_marketplace_config(self) -> Result[list[MarketplaceConfig], ConfigError]:
+    def get_marketplace_config(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         """Get marketplace configuration from all scopes."""
         result = self.load()
         if is_err(result):
-            return Err(result.err())
+            config_error = result.unwrap_err()
+            return Err(
+                MarketplaceConfigLoadError(
+                    scope=config_error.scope.value,
+                    message=f"Failed to load marketplace config: {config_error.message}",
+                )
+            )
         config = result.unwrap()
         return Ok(config.marketplaces)
+
+    def add_marketplace_config(
+        self,
+        config: MarketplaceConfig,
+        scope: MarketplaceScope,
+    ) -> Result[None, MarketplaceError]:
+        """Add marketplace configuration to specified scope."""
+        paths = discover_config_paths(self.working_dir, self.config)
+
+        config_path = paths.global_path if scope == MarketplaceScope.GLOBAL else paths.project_path
+
+        if config_path is None:
+            config_path = self._get_default_config_path(scope)
+
+        existing_data = {}
+        if config_path.exists():
+            try:
+                raw_text = config_path.read_text(encoding="utf-8")
+                existing_data = yaml.safe_load(raw_text) or {}
+            except (OSError, yaml.YAMLError) as exc:
+                return Err(
+                    MarketplaceConfigLoadError(
+                        scope=scope.value,
+                        message=f"Failed to read existing config: {exc}",
+                    )
+                )
+
+        marketplaces = existing_data.get("marketplaces", [])
+        marketplaces.append(config.model_dump(mode="json"))
+        existing_data["marketplaces"] = marketplaces
+
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(yaml.safe_dump(existing_data, sort_keys=False), encoding="utf-8")
+            return Ok(None)
+        except OSError as exc:
+            return Err(
+                MarketplaceConfigSaveError(
+                    scope=scope.value,
+                    message=f"Failed to write config: {exc}",
+                )
+            )
+
+    def _get_default_config_path(self, scope: MarketplaceScope) -> Path:
+        paths_config = PathsConfig(
+            config_dir_name=self.config.config_dir_name,
+            project_subdir_name=self.config.project_subdir_name,
+        )
+
+        if scope == MarketplaceScope.GLOBAL:
+            return get_global_config_root(paths_config) / self.config.global_config_filename
+
+        return self.working_dir / self.config.project_subdir_name / self.config.project_config_filename
 
     def _load_optional(
         self,

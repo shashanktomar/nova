@@ -6,9 +6,9 @@ from .protocol import DataStore
 
 __all__ = [
     "DataStore",
-    "FileDataStore",
     "DataStoreError",
+    "DataStoreKeyNotFoundError",
     "DataStoreReadError",
     "DataStoreWriteError",
-    "DataStoreKeyNotFoundError",
+    "FileDataStore",
 ]

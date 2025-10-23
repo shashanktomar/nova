@@ -7,7 +7,7 @@ from typing import Protocol
 from nova.utils.functools.models import Result
 
 from .config import MarketplaceConfig
-from .models import MarketplaceError
+from .models import MarketplaceError, MarketplaceScope
 
 
 class MarketplaceConfigProvider(Protocol):
@@ -15,4 +15,12 @@ class MarketplaceConfigProvider(Protocol):
 
     def get_marketplace_config(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         """Get marketplace configuration from all scopes."""
+        ...
+
+    def add_marketplace_config(
+        self,
+        config: MarketplaceConfig,
+        scope: MarketplaceScope,
+    ) -> Result[None, MarketplaceError]:
+        """Add marketplace configuration to specified scope."""
         ...

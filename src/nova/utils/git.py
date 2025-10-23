@@ -61,9 +61,7 @@ def get_git_version() -> Result[str, GitError]:
         if match:
             return Ok(match.group(1))
 
-        return Err(
-            GitVersionError(message=f"Could not parse git version from: {result.stdout}")
-        )
+        return Err(GitVersionError(message=f"Could not parse git version from: {result.stdout}"))
 
     except FileNotFoundError:
         return Err(GitNotInstalledError(message="git command not found"))
