@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from nova.utils.dicts import deep_merge
@@ -47,10 +48,16 @@ def _strip_none_dict(data: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
+type ListMergeStrategy = Callable[[list[object], list[object]], list[object]]
+
+
 def _config_list_merge(key: str, base_list: list[object], override_list: list[object]) -> list[object]:
-    if key != "marketplaces":
-        return list(override_list)
-    return _merge_marketplaces(base_list, override_list)
+    strategy = _LIST_MERGE_STRATEGIES.get(key, _default_list_merge)
+    return strategy(base_list, override_list)
+
+
+def _default_list_merge(_: list[object], override_list: list[object]) -> list[object]:
+    return list(override_list)
 
 
 def _merge_marketplaces(
@@ -84,3 +91,7 @@ def _extract_marketplace_name(entry: object) -> str | None:
         name = entry.get("name")
         return name if isinstance(name, str) else None
     return getattr(entry, "name", None)
+
+_LIST_MERGE_STRATEGIES: dict[str, ListMergeStrategy] = {
+    "marketplaces": _merge_marketplaces,
+}

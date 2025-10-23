@@ -1,3 +1,8 @@
+---
+description: Design feature specifications interactively with architectural guidance
+disable-model-invocation: false
+---
+
 # Interactive Feature Specification Design
 
 **Mode**: ARCHITECT | Interactive Specification Design

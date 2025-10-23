@@ -501,6 +501,7 @@ Result[NovaConfig, ConfigError]
 - [x] Document usage patterns
 - [x] Update ADR-002 with ConfigStore protocol
 - [ ] Add examples for custom ConfigStore implementations
+- [ ] Potential enhancement: allow `merge_configs` to accept per-key merge rules so domain modules can declare behaviors like keyed list merges (e.g., `MergeRule(identifier="name")`) without hard-coding marketplace logic in the merger
 
 ## References
 

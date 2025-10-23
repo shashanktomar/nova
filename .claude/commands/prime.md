@@ -1,3 +1,8 @@
+---
+description: Load project architecture and code guidelines documentation
+disable-model-invocation: false
+---
+
 # Prime - Daily Development Initialization
 
 <role>
