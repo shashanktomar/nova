@@ -23,12 +23,17 @@ sync:
 ###############################################
 
 # Run the nova cli command
+[group('cli')]
 nova *args:
     uv run nova {{args}}
 
+###############################################
+################## Test Runbooks ##############
+###############################################
+
 # Run manual marketplace CLI tests
-[group('cli')]
-test-marketplace-manual:
+[group('test-runbooks')]
+test-marketplace-runbook:
     ./scripts/test-marketplace-cli.sh
 
 # aliases
