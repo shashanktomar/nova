@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result
-from nova.utils.paths import PathsConfig, get_data_directory
+from nova.utils.paths import get_data_directory_from_dirs
 from nova.utils.types import JsonValue
 
 from .models import DataStoreError, DataStoreKeyNotFoundError, DataStoreReadError, DataStoreWriteError
@@ -15,9 +16,9 @@ from .models import DataStoreError, DataStoreKeyNotFoundError, DataStoreReadErro
 class FileDataStore:
     """File-based implementation of DataStore protocol."""
 
-    def __init__(self, namespace: str) -> None:
+    def __init__(self, namespace: str, directories: AppDirectories) -> None:
         self._namespace = namespace
-        self._config = PathsConfig(config_dir_name="nova", project_subdir_name=".nova")
+        self._directories = directories
 
     def save(self, key: str, data: JsonValue) -> Result[None, DataStoreError]:
         data_file = self._get_data_file_path()
@@ -109,5 +110,5 @@ class FileDataStore:
             )
 
     def _get_data_file_path(self) -> Path:
-        data_dir = get_data_directory(self._config)
+        data_dir = get_data_directory_from_dirs(self._directories)
         return data_dir / self._namespace / "data.json"

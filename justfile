@@ -78,9 +78,19 @@ check-types:
 lockfile-check:
   uv lock --check
 
+# Run dependency graph check
+[group('test and lint')]
+check-dependency-graph:
+  uv run tach check
+
+# Check the external imports in your Python packages match your declared package dependencies
+[group('test and lint')]
+check-external-imports:
+  uv run tach check-external
+
 # Run all code quality checks
 [group('test and lint')]
-lint-all: lockfile-check lint check-types
+lint-all: lockfile-check lint check-types check-dependency-graph check-external-imports
     @echo "All lint checks passed! 🎉"
 
 # Run test and all code quality checks

@@ -11,6 +11,7 @@ from nova.datastore.models import (
     DataStoreReadError,
     DataStoreWriteError,
 )
+from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import is_err, is_ok
 
 
@@ -20,7 +21,8 @@ def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[FileDataStor
     monkeypatch.setenv("XDG_DATA_HOME", str(data_home))
 
     namespace = "test-namespace"
-    datastore = FileDataStore(namespace=namespace)
+    directories = AppDirectories(app_name="nova", project_marker=".nova")
+    datastore = FileDataStore(namespace=namespace, directories=directories)
     data_file = data_home / "nova" / namespace / "data.json"
     return datastore, data_file
 

@@ -1,4 +1,4 @@
-from .config import FileConfigPaths
+from .settings import ConfigFileNames, ConfigStoreSettings
 from .store import FileConfigStore
 
-__all__ = ["FileConfigPaths", "FileConfigStore"]
+__all__ = ["ConfigFileNames", "ConfigStoreSettings", "FileConfigStore"]

@@ -1,3 +1,3 @@
-from nova.utils.paths import PathsConfig
+from .directories import AppDirectories
 
-__all__ = ["PathsConfig"]
+__all__ = ["AppDirectories"]

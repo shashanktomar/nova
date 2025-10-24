@@ -11,8 +11,9 @@ from functools import partial
 from pathlib import Path
 
 from nova.datastore import DataStore
+from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err
-from nova.utils.paths import PathsConfig, get_data_directory
+from nova.utils.paths import get_data_directory_from_dirs
 
 from .config import MarketplaceConfig
 from .fetcher import fetch_marketplace
@@ -34,10 +35,15 @@ from .validator import validate_marketplace
 class Marketplace:
     """Marketplace management API."""
 
-    def __init__(self, config_provider: MarketplaceConfigProvider, datastore: DataStore) -> None:
-        """Initialize with a marketplace configuration provider and datastore."""
+    def __init__(
+        self,
+        config_provider: MarketplaceConfigProvider,
+        datastore: DataStore,
+        directories: AppDirectories,
+    ) -> None:
         self._config_provider = config_provider
         self._datastore = datastore
+        self._directories = directories
 
     def add(
         self,
@@ -142,8 +148,7 @@ class Marketplace:
         if isinstance(marketplace_source, LocalMarketplaceSource):
             return temp_dir
 
-        config = PathsConfig(config_dir_name="nova", project_subdir_name=".nova")
-        data_dir = get_data_directory(config)
+        data_dir = get_data_directory_from_dirs(self._directories)
         marketplaces_dir = data_dir / "marketplaces"
         final_location = marketplaces_dir / marketplace_name
 

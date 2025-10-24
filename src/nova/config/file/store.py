@@ -16,7 +16,7 @@ from nova.marketplace.models import (
     MarketplaceSource,
 )
 from nova.utils.functools.models import Err, Ok, Result, is_err
-from nova.utils.paths import PathsConfig, get_global_config_root
+from nova.utils.paths import get_global_config_root_from_dirs
 
 from ..merger import merge_configs
 from ..models import (
@@ -33,20 +33,20 @@ from ..models import (
 )
 from ..protocol import ConfigStore
 from ..resolver import apply_env_overrides
-from .config import FileConfigPaths
 from .paths import ResolvedConfigPaths, discover_config_paths
+from .settings import ConfigStoreSettings
 
 ScopeModel = GlobalConfig | ProjectConfig | UserConfig
 ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
 
 
 class FileConfigStore(ConfigStore):
-    def __init__(self, working_dir: Path, config: FileConfigPaths) -> None:
+    def __init__(self, working_dir: Path, settings: ConfigStoreSettings) -> None:
         self.working_dir = working_dir
-        self.config = config
+        self.settings = settings
 
     def load(self) -> Result[NovaConfig, ConfigError]:
-        paths = discover_config_paths(self.working_dir, self.config)
+        paths = discover_config_paths(self.working_dir, self.settings)
 
         return (
             self._load_all_scopes(paths)
@@ -55,7 +55,7 @@ class FileConfigStore(ConfigStore):
         )
 
     def load_scope(self, scope: ConfigScope) -> Result[NovaConfig | None, ConfigError]:
-        paths = discover_config_paths(self.working_dir, self.config)
+        paths = discover_config_paths(self.working_dir, self.settings)
 
         match scope:
             case ConfigScope.GLOBAL:
@@ -145,7 +145,7 @@ class FileConfigStore(ConfigStore):
         return Ok(None)
 
     def _get_config_path_for_scope(self, scope: ConfigScope) -> Path:
-        paths = discover_config_paths(self.working_dir, self.config)
+        paths = discover_config_paths(self.working_dir, self.settings)
 
         match scope:
             case ConfigScope.GLOBAL:
@@ -158,17 +158,13 @@ class FileConfigStore(ConfigStore):
                 raise ValueError(f"Unexpected scope: {scope}")
 
     def _get_default_global_path(self) -> Path:
-        paths_config = PathsConfig(
-            config_dir_name=self.config.config_dir_name,
-            project_subdir_name=self.config.project_subdir_name,
-        )
-        return get_global_config_root(paths_config) / self.config.global_config_filename
+        return get_global_config_root_from_dirs(self.settings.directories) / self.settings.global_file
 
     def _get_default_project_path(self) -> Path:
-        return self.working_dir / self.config.project_subdir_name / self.config.project_config_filename
+        return self.working_dir / self.settings.project_marker / self.settings.project_file
 
     def _get_default_user_path(self) -> Path:
-        return self.working_dir / self.config.project_subdir_name / self.config.user_config_filename
+        return self.working_dir / self.settings.project_marker / self.settings.user_file
 
     def _write_scope_data(
         self,

@@ -42,7 +42,7 @@ def show(
     selected_format = format.lower()
     store = FileConfigStore(
         working_dir=working_dir or Path.cwd(),
-        config=settings.to_file_config_paths(),
+        settings=settings.to_config_store_settings(),
     )
     result = store.load()
     if is_err(result):

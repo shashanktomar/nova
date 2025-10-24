@@ -12,6 +12,7 @@ from nova.marketplace.models import (
     MarketplaceAddError,
     MarketplaceAlreadyExistsError,
 )
+from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err, is_ok
 
 try:
@@ -66,7 +67,8 @@ def datastore() -> FakeDatastore:
 
 @pytest.fixture
 def marketplace(config_provider: FakeConfigProvider, datastore: FakeDatastore) -> Marketplace:
-    return Marketplace(config_provider=config_provider, datastore=datastore)
+    directories = AppDirectories(app_name="nova", project_marker=".nova")
+    return Marketplace(config_provider=config_provider, datastore=datastore, directories=directories)
 
 
 class DummyManifest:
@@ -91,7 +93,7 @@ def test_add_succeeds_for_remote_source(
     mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(fake_temp))
     mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("remote")))
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.get_data_directory", return_value=data_root)
+    mocker.patch("nova.marketplace.api.get_data_directory_from_dirs", return_value=data_root)
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -257,7 +259,7 @@ def test_move_to_data_directory_replaces_existing_directory(
     mocker: MockerFixture,
 ) -> None:
     data_root = tmp_path / "data"
-    mocker.patch("nova.marketplace.api.get_data_directory", return_value=data_root)
+    mocker.patch("nova.marketplace.api.get_data_directory_from_dirs", return_value=data_root)
 
     existing = data_root / "marketplaces" / "remote"
     existing.mkdir(parents=True)

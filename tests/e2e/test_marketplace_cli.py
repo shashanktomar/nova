@@ -132,14 +132,10 @@ def test_add_marketplace_to_project_scope() -> None:
         _copy_marketplace_fixture("valid-basic", local_fixture)
         (project_root / ".nova").mkdir(parents=True, exist_ok=True)
 
-        os.chdir(project_root)
-        try:
-            result = _invoke(
-                ["marketplace", "add", str(local_fixture), "--scope", "project"],
-                env=env,
-            )
-        finally:
-            os.chdir(base)
+        result = _invoke(
+            ["marketplace", "add", str(local_fixture), "--scope", "project", "--working-dir", str(project_root)],
+            env=env,
+        )
 
         assert result.exit_code == 0, result.stdout + result.stderr
         assert "✓ Added 'test-marketplace' with 0 bundles (project)" in result.stdout

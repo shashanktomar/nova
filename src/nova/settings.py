@@ -5,8 +5,8 @@ from typing import Literal
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from nova.config.file import FileConfigPaths
-from nova.utils import PathsConfig
+from nova.config.file import ConfigFileNames, ConfigStoreSettings
+from nova.utils import AppDirectories
 
 
 class AppInfo(BaseModel):
@@ -67,19 +67,20 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )
 
-    def to_file_config_paths(self) -> FileConfigPaths:
-        return FileConfigPaths(
-            global_config_filename=self.paths.global_config_filename,
-            project_config_filename=self.paths.project_config_filename,
-            user_config_filename=self.paths.user_config_filename,
-            project_subdir_name=self.paths.project_subdir_name,
-            config_dir_name=self.paths.config_dir_name,
+    def to_app_directories(self) -> AppDirectories:
+        return AppDirectories(
+            app_name=self.paths.config_dir_name,
+            project_marker=self.paths.project_subdir_name,
         )
 
-    def to_paths_config(self) -> PathsConfig:
-        return PathsConfig(
-            config_dir_name=self.paths.config_dir_name,
-            project_subdir_name=self.paths.project_subdir_name,
+    def to_config_store_settings(self) -> ConfigStoreSettings:
+        return ConfigStoreSettings(
+            directories=self.to_app_directories(),
+            filenames=ConfigFileNames(
+                global_file=self.paths.global_config_filename,
+                project_file=self.paths.project_config_filename,
+                user_file=self.paths.user_config_filename,
+            ),
         )
 
 

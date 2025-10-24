@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from nova.utils.paths import (
-    PathsConfig,
-    get_global_config_root,
-    get_project_root,
-    resolve_project_dir,
+    get_global_config_root_from_dirs,
+    get_project_root_from_dirs,
+    resolve_project_dir_from_dirs,
     resolve_working_directory,
 )
 
-from .config import FileConfigPaths
+from .settings import ConfigStoreSettings
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,17 +20,12 @@ class ResolvedConfigPaths:
     user_path: Path | None
 
 
-def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ResolvedConfigPaths:
+def discover_config_paths(working_dir: Path, settings: ConfigStoreSettings) -> ResolvedConfigPaths:
     start_dir = resolve_working_directory(working_dir)
 
-    paths_config = PathsConfig(
-        config_dir_name=config.config_dir_name,
-        project_subdir_name=config.project_subdir_name,
-    )
-
-    global_path = _resolve_global_config(config, paths_config)
-    project_root = get_project_root(start_dir, paths_config)
-    project_path, user_path = _resolve_project_configs(project_root, config, paths_config)
+    global_path = _resolve_global_config(settings)
+    project_root = get_project_root_from_dirs(start_dir, settings.directories)
+    project_path, user_path = _resolve_project_configs(project_root, settings)
 
     return ResolvedConfigPaths(
         global_path=global_path,
@@ -40,25 +34,24 @@ def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> Resolve
     )
 
 
-def _resolve_global_config(config: FileConfigPaths, paths_config: PathsConfig) -> Path | None:
-    candidate = get_global_config_root(paths_config) / config.global_config_filename
+def _resolve_global_config(settings: ConfigStoreSettings) -> Path | None:
+    candidate = get_global_config_root_from_dirs(settings.directories) / settings.global_file
     return candidate if candidate.is_file() else None
 
 
 def _resolve_project_configs(
     project_root: Path | None,
-    config: FileConfigPaths,
-    paths_config: PathsConfig,
+    settings: ConfigStoreSettings,
 ) -> tuple[Path | None, Path | None]:
     if project_root is None:
         return None, None
 
-    project_dir = resolve_project_dir(project_root, paths_config)
+    project_dir = resolve_project_dir_from_dirs(project_root, settings.directories)
     if project_dir is None:
         return None, None
 
-    project_candidate = project_dir / config.project_config_filename
-    user_candidate = project_dir / config.user_config_filename
+    project_candidate = project_dir / settings.project_file
+    user_candidate = project_dir / settings.user_file
 
     project_path = project_candidate if project_candidate.is_file() else None
     user_path = user_candidate if user_candidate.is_file() else None

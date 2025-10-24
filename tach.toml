@@ -1,0 +1,52 @@
+# All config params can be found here https://docs.gauge.sh/usage/configuration#tach-toml
+
+interfaces = []
+exclude = [
+  "**/*__pycache__",
+  "**/*egg-info",
+  "**/docs",
+  "**/tests",
+  "**/venv",
+  "**/.venv",
+  "**/conftest.py",
+]
+external.exclude = ["typer"]
+source_roots = ["src"]
+forbid_circular_dependencies = true
+root_module = "allow"
+
+[[modules]]
+path = "nova.settings"
+
+[[modules]]
+path = "nova.constants"
+depends_on = []
+
+[[modules]]
+path = "nova.utils.logging"
+depends_on = [
+  { path = "nova.settings" }
+]
+
+[[modules]]
+path = "nova.utils"
+depends_on = [{ path = "nova.constants" }]
+
+[[modules]]
+path = "nova.datastore"
+depends_on = [{ path = "nova.utils" }]
+
+[[modules]]
+path = "nova.config"
+depends_on = [
+  { path = "nova.utils" },
+  { path = "nova.marketplace" },
+  { path = "nova.constants" }
+]
+
+[[modules]]
+path = "nova.marketplace"
+depends_on = [{ path = "nova.utils" }, { path = "nova.datastore" }]
+
+[[modules]]
+path = "nova.cli"

@@ -7,8 +7,8 @@ import yaml
 
 import nova.config.file.store as store_module
 from nova.config import FileConfigStore
-from nova.config.file.config import FileConfigPaths
 from nova.config.file.paths import ResolvedConfigPaths
+from nova.config.file.settings import ConfigFileNames, ConfigStoreSettings
 from nova.config.models import (
     ConfigIOError,
     ConfigNotFoundError,
@@ -22,14 +22,19 @@ from nova.marketplace.models import (
     MarketplaceConfigLoadError,
     MarketplaceConfigSaveError,
 )
+from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import is_err, is_ok
 
-TEST_CONFIG = FileConfigPaths(
-    global_config_filename="config.yaml",
-    project_config_filename="config.yaml",
-    user_config_filename="config.local.yaml",
-    project_subdir_name=".nova",
-    config_dir_name="nova",
+TEST_SETTINGS = ConfigStoreSettings(
+    directories=AppDirectories(
+        app_name="nova",
+        project_marker=".nova",
+    ),
+    filenames=ConfigFileNames(
+        global_file="config.yaml",
+        project_file="config.yaml",
+        user_file="config.local.yaml",
+    ),
 )
 
 
@@ -89,7 +94,7 @@ feature:
     monkeypatch.setenv("NOVA_CONFIG__FEATURE__RETRIES", "5")
     monkeypatch.setenv("NOVA_CONFIG__LIST_VALUE__ITEMS", '["x", "y"]')
 
-    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=working_dir, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_ok(result)
@@ -104,7 +109,7 @@ feature:
 
 def test_get_config_path_for_scope_uses_default_locations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
 
     resolved = ResolvedConfigPaths(global_path=None, project_path=None, user_path=None)
     monkeypatch.setattr(store_module, "discover_config_paths", lambda *args, **kwargs: resolved)
@@ -113,9 +118,9 @@ def test_get_config_path_for_scope_uses_default_locations(tmp_path: Path, monkey
     project_path = store._get_config_path_for_scope(ConfigScope.PROJECT)
     user_path = store._get_config_path_for_scope(ConfigScope.USER)
 
-    assert global_path == tmp_path / "xdg" / TEST_CONFIG.config_dir_name / TEST_CONFIG.global_config_filename
-    assert project_path == tmp_path / TEST_CONFIG.project_subdir_name / TEST_CONFIG.project_config_filename
-    assert user_path == tmp_path / TEST_CONFIG.project_subdir_name / TEST_CONFIG.user_config_filename
+    assert global_path == tmp_path / "xdg" / TEST_SETTINGS.app_name / TEST_SETTINGS.global_file
+    assert project_path == tmp_path / TEST_SETTINGS.project_marker / TEST_SETTINGS.project_file
+    assert user_path == tmp_path / TEST_SETTINGS.project_marker / TEST_SETTINGS.user_file
 
 
 def test_file_config_store_merges_marketplaces_from_multiple_scopes(tmp_path: Path, monkeypatch) -> None:
@@ -172,7 +177,7 @@ marketplaces:
     working_dir = project_root / "src"
     working_dir.mkdir(parents=True)
 
-    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=working_dir, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_ok(result)
@@ -188,7 +193,7 @@ def test_file_config_store_returns_defaults_when_no_files_exist(tmp_path: Path, 
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     monkeypatch.setattr(Path, "cwd", lambda: tmp_path, raising=False)
 
-    store = FileConfigStore(working_dir=Path.cwd(), config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=Path.cwd(), settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_ok(result)
@@ -203,7 +208,7 @@ def test_file_config_store_returns_error_on_invalid_yaml(tmp_path: Path, monkeyp
     global_config.write_text("foo: [")  # Invalid YAML
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -228,7 +233,7 @@ def test_file_config_store_returns_user_scope_error_when_user_yaml_invalid(
     user_config = project_config_dir / "config.local.yaml"
     user_config.write_text("invalid: [")
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -251,7 +256,7 @@ def test_file_config_store_returns_error_on_non_mapping_root(tmp_path: Path, mon
     project_config = project_config_dir / "config.yaml"
     write_yaml_dict(project_config, ["not", "a", "mapping"])  # List instead of dict
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -283,7 +288,7 @@ marketplaces:
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -311,7 +316,7 @@ def test_file_config_store_returns_error_on_falsy_non_mapping_root(
     project_config = project_config_dir / "config.yaml"
     write_yaml(project_config, "false\n")
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -341,7 +346,7 @@ user_scope: true
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
 
     original = FileConfigStore._load_scope_config
     called_scopes: list[ConfigScope] = []
@@ -369,7 +374,7 @@ user_scope: true
 def test_load_scope_returns_config_not_found_when_expected_file_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     missing_path = tmp_path / "missing.yaml"
     resolved = ResolvedConfigPaths(global_path=missing_path, project_path=None, user_path=None)
     monkeypatch.setattr(store_module, "discover_config_paths", lambda *args, **kwargs: resolved)
@@ -400,7 +405,7 @@ def test_file_config_store_returns_error_on_io_failure(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(Path, "read_text", fake_read_text, raising=False)
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_err(result)
@@ -438,7 +443,7 @@ feature:
     nested_dir = project_root / "src" / "nova" / "cli"
     nested_dir.mkdir(parents=True)
 
-    store = FileConfigStore(working_dir=nested_dir, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=nested_dir, settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_ok(result)
@@ -477,7 +482,7 @@ from_project: true
     monkeypatch.setattr(Path, "cwd", lambda: working_dir, raising=False)
 
     # Don't provide working_dir, should default to cwd
-    store = FileConfigStore(working_dir=Path.cwd(), config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=Path.cwd(), settings=TEST_SETTINGS)
     result = store.load()
 
     assert is_ok(result)
@@ -506,7 +511,7 @@ only_global: true
     working_dir = tmp_path / "no_project"
     working_dir.mkdir()
 
-    store = FileConfigStore(working_dir=working_dir, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=working_dir, settings=TEST_SETTINGS)
     result = store.load()
 
     # Should succeed with just global config
@@ -549,7 +554,7 @@ marketplaces:
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.get_marketplace_config()
 
     assert is_ok(result)
@@ -568,7 +573,7 @@ def test_get_marketplace_config_returns_empty_list_when_no_marketplaces(tmp_path
     write_yaml(global_dir / "config.yaml", "")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.get_marketplace_config()
 
     assert is_ok(result)
@@ -584,7 +589,7 @@ def test_get_marketplace_config_propagates_config_errors(tmp_path: Path, monkeyp
     write_yaml(global_config, "invalid: [")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.get_marketplace_config()
 
     assert is_err(result)
@@ -608,7 +613,7 @@ marketplaces:
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.has_marketplace(
         name="official",
         source=GitHubMarketplaceSource(type="github", repo="owner/different"),
@@ -633,7 +638,7 @@ marketplaces:
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.has_marketplace(
         name="different-name",
         source=GitHubMarketplaceSource(type="github", repo="owner/official"),
@@ -658,7 +663,7 @@ marketplaces:
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.has_marketplace(
         name="different-name",
         source=GitHubMarketplaceSource(type="github", repo="owner/different"),
@@ -674,7 +679,7 @@ def test_has_marketplace_returns_false_when_no_marketplaces_configured(tmp_path:
     write_yaml(global_dir / "config.yaml", "")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.has_marketplace(
         name="any-name",
         source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
@@ -691,7 +696,7 @@ def test_has_marketplace_propagates_config_errors(tmp_path: Path, monkeypatch) -
     write_yaml(global_config, "invalid: [")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.has_marketplace(
         name="any-name",
         source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
@@ -717,7 +722,7 @@ marketplaces:
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.GLOBAL)
 
     assert is_ok(result)
@@ -747,7 +752,7 @@ marketplaces:
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.PROJECT)
 
     assert is_ok(result)
@@ -778,7 +783,7 @@ marketplaces:
 """,
     )
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.USER)
 
     assert is_ok(result)
@@ -794,7 +799,7 @@ def test_load_scope_returns_none_when_scope_not_found(tmp_path: Path, monkeypatc
     write_yaml(global_dir / "config.yaml", "")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.PROJECT)
 
     assert is_ok(result)
@@ -809,7 +814,7 @@ def test_load_scope_propagates_validation_errors(tmp_path: Path, monkeypatch) ->
     write_yaml(global_config, "invalid: [")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.GLOBAL)
 
     assert is_err(result)
@@ -833,7 +838,7 @@ def test_load_scope_returns_error_on_io_failure(tmp_path: Path, monkeypatch) -> 
 
     monkeypatch.setattr(Path, "read_text", fake_read_text, raising=False)
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.GLOBAL)
 
     assert is_err(result)
@@ -850,7 +855,7 @@ def test_load_scope_returns_error_on_non_mapping_root(tmp_path: Path, monkeypatc
     write_yaml_dict(global_config, ["not", "a", "mapping"])
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     result = store.load_scope(ConfigScope.GLOBAL)
 
     assert is_err(result)
@@ -865,7 +870,7 @@ def test_add_marketplace_creates_new_global_config(tmp_path: Path, monkeypatch) 
     global_dir.mkdir(parents=True)
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     marketplace = MarketplaceConfig(
         name="test-marketplace",
         source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
@@ -892,7 +897,7 @@ def test_add_marketplace_creates_new_project_config(tmp_path: Path, monkeypatch)
     project_root = tmp_path / "project"
     project_root.mkdir()
 
-    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
     marketplace = MarketplaceConfig(
         name="project-marketplace",
         source=GitHubMarketplaceSource(type="github", repo="owner/project"),
@@ -923,7 +928,7 @@ marketplaces:
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     marketplace = MarketplaceConfig(
         name="new-marketplace",
         source=GitHubMarketplaceSource(type="github", repo="owner/new"),
@@ -945,7 +950,7 @@ def test_add_marketplace_propagates_load_errors(tmp_path: Path, monkeypatch) -> 
     write_yaml(global_config, "invalid: [")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     marketplace = MarketplaceConfig(
         name="test",
         source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
@@ -964,7 +969,7 @@ def test_add_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch) ->
     write_yaml(global_dir / "config.yaml", "")
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
-    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
     marketplace = MarketplaceConfig(
         name="test",
         source=GitHubMarketplaceSource(type="github", repo="owner/repo"),

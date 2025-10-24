@@ -77,11 +77,12 @@ def add(
 
     config_store = FileConfigStore(
         working_dir=working_path,
-        config=settings.to_file_config_paths(),
+        settings=settings.to_config_store_settings(),
     )
 
-    datastore = FileDataStore(namespace="marketplaces")
-    marketplace = Marketplace(config_store, datastore)
+    directories = settings.to_app_directories()
+    datastore = FileDataStore(namespace="marketplaces", directories=directories)
+    marketplace = Marketplace(config_store, datastore, directories)
 
     result = marketplace.add(source, scope=scope, working_dir=working_path)
 
@@ -127,8 +128,9 @@ def _handle_error(error: MarketplaceError) -> None:
         case MarketplaceAddError(message=message):
             typer.secho("error: failed to add marketplace", err=True, fg=typer.colors.RED)
             typer.secho(f"  {message}", err=True)
-        case MarketplaceConfigLoadError(scope=scope, message=message) | MarketplaceConfigSaveError(
-            scope=scope, message=message
+        case (
+            MarketplaceConfigLoadError(scope=scope, message=message)
+            | MarketplaceConfigSaveError(scope=scope, message=message)
         ):
             typer.secho(f"error: configuration {scope} failed", err=True, fg=typer.colors.RED)
             typer.secho(f"  {message}", err=True)
