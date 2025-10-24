@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import ValidationError
 
 from nova.marketplace import MarketplaceConfig, MarketplaceScope
-from nova.marketplace.models import MarketplaceConfigLoadError, MarketplaceConfigSaveError, MarketplaceError
+from nova.marketplace.models import (
+    MarketplaceConfigLoadError,
+    MarketplaceConfigSaveError,
+    MarketplaceError,
+    MarketplaceSource,
+)
 from nova.utils.functools.models import Err, Ok, Result, is_err
 from nova.utils.paths import PathsConfig, get_global_config_root
 
@@ -28,7 +34,7 @@ from ..models import (
 from ..protocol import ConfigStore
 from ..resolver import apply_env_overrides
 from .config import FileConfigPaths
-from .paths import discover_config_paths
+from .paths import ResolvedConfigPaths, discover_config_paths
 
 ScopeModel = GlobalConfig | ProjectConfig | UserConfig
 ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
@@ -42,39 +48,34 @@ class FileConfigStore(ConfigStore):
     def load(self) -> Result[NovaConfig, ConfigError]:
         paths = discover_config_paths(self.working_dir, self.config)
 
-        scope_specs: tuple[tuple[Path | None, ScopeModelType, ConfigScope], ...] = (
-            (paths.global_path, GlobalConfig, ConfigScope.GLOBAL),
-            (paths.project_path, ProjectConfig, ConfigScope.PROJECT),
-            (paths.user_path, UserConfig, ConfigScope.USER),
+        return (
+            self._load_all_scopes(paths)
+            .map(lambda configs: merge_configs(configs[0], configs[1], configs[2]))
+            .map(apply_env_overrides)
         )
 
-        global_cfg: GlobalConfig | None = None
-        project_cfg: ProjectConfig | None = None
-        user_cfg: UserConfig | None = None
+    def load_scope(self, scope: ConfigScope) -> Result[NovaConfig | None, ConfigError]:
+        paths = discover_config_paths(self.working_dir, self.config)
 
-        for path, model_cls, scope in scope_specs:
-            result = self._load_optional(path, model_cls, scope)
-            if is_err(result):
-                return Err(result.err())
-            value = result.unwrap()
-            match scope:
-                case ConfigScope.GLOBAL:
-                    assert value is None or isinstance(value, GlobalConfig)
-                    global_cfg = value
-                case ConfigScope.PROJECT:
-                    assert value is None or isinstance(value, ProjectConfig)
-                    project_cfg = value
-                case ConfigScope.USER:
-                    assert value is None or isinstance(value, UserConfig)
-                    user_cfg = value
+        match scope:
+            case ConfigScope.GLOBAL:
+                path, model_cls = paths.global_path, GlobalConfig
+            case ConfigScope.PROJECT:
+                path, model_cls = paths.project_path, ProjectConfig
+            case ConfigScope.USER:
+                path, model_cls = paths.user_path, UserConfig
+            case _:
+                raise ValueError(f"Unexpected scope: {scope}")
 
-        merged = merge_configs(
-            global_cfg,
-            project_cfg,
-            user_cfg,
-        )
-        effective = apply_env_overrides(merged)
-        return Ok(effective)
+        result = self._load_optional(path, model_cls, scope)
+        if is_err(result):
+            return result
+
+        config = result.unwrap()
+        if config is None:
+            return Ok(None)
+
+        return Ok(NovaConfig.model_validate(config.model_dump()))
 
     def get_marketplace_config(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         """Get marketplace configuration from all scopes."""
@@ -90,58 +91,130 @@ class FileConfigStore(ConfigStore):
         config = result.unwrap()
         return Ok(config.marketplaces)
 
-    def add_marketplace_config(
+    def has_marketplace(
+        self,
+        name: str,
+        source: MarketplaceSource,
+    ) -> Result[bool, MarketplaceError]:
+        config_result = self.get_marketplace_config()
+        if is_err(config_result):
+            return config_result
+
+        marketplaces = config_result.unwrap()
+        has_match = any(m.name == name or m.source == source for m in marketplaces)
+        return Ok(has_match)
+
+    def add_marketplace(
         self,
         config: MarketplaceConfig,
         scope: MarketplaceScope,
     ) -> Result[None, MarketplaceError]:
         """Add marketplace configuration to specified scope."""
-        paths = discover_config_paths(self.working_dir, self.config)
+        config_scope = ConfigScope.GLOBAL if scope == MarketplaceScope.GLOBAL else ConfigScope.PROJECT
 
-        config_path = paths.global_path if scope == MarketplaceScope.GLOBAL else paths.project_path
-
-        if config_path is None:
-            config_path = self._get_default_config_path(scope)
-
-        existing_data = {}
-        if config_path.exists():
-            try:
-                raw_text = config_path.read_text(encoding="utf-8")
-                existing_data = yaml.safe_load(raw_text) or {}
-            except (OSError, yaml.YAMLError) as exc:
-                return Err(
-                    MarketplaceConfigLoadError(
-                        scope=scope.value,
-                        message=f"Failed to read existing config: {exc}",
-                    )
-                )
-
-        marketplaces = existing_data.get("marketplaces", [])
-        marketplaces.append(config.model_dump(mode="json"))
-        existing_data["marketplaces"] = marketplaces
-
-        try:
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            config_path.write_text(yaml.safe_dump(existing_data, sort_keys=False), encoding="utf-8")
-            return Ok(None)
-        except OSError as exc:
+        result = self.load_scope(config_scope)
+        if is_err(result):
+            config_error = result.unwrap_err()
             return Err(
-                MarketplaceConfigSaveError(
+                MarketplaceConfigLoadError(
                     scope=scope.value,
-                    message=f"Failed to write config: {exc}",
+                    message=f"Failed to load existing config: {config_error.message}",
                 )
             )
 
-    def _get_default_config_path(self, scope: MarketplaceScope) -> Path:
+        existing_config = result.unwrap()
+
+        if existing_config is None:
+            marketplaces = [config.model_dump(mode="json")]
+        else:
+            marketplaces = [m.model_dump(mode="json") for m in existing_config.marketplaces]
+            marketplaces.append(config.model_dump(mode="json"))
+
+        data = {"marketplaces": marketplaces}
+
+        write_result = self._write_scope_data(config_scope, data)
+        if is_err(write_result):
+            config_error = write_result.unwrap_err()
+            return Err(
+                MarketplaceConfigSaveError(
+                    scope=scope.value,
+                    message=f"Failed to write config: {config_error.message}",
+                )
+            )
+
+        return Ok(None)
+
+    def _get_config_path_for_scope(self, scope: ConfigScope) -> Path:
+        paths = discover_config_paths(self.working_dir, self.config)
+
+        match scope:
+            case ConfigScope.GLOBAL:
+                return paths.global_path or self._get_default_global_path()
+            case ConfigScope.PROJECT:
+                return paths.project_path or self._get_default_project_path()
+            case ConfigScope.USER:
+                return paths.user_path or self._get_default_user_path()
+            case _:
+                raise ValueError(f"Unexpected scope: {scope}")
+
+    def _get_default_global_path(self) -> Path:
         paths_config = PathsConfig(
             config_dir_name=self.config.config_dir_name,
             project_subdir_name=self.config.project_subdir_name,
         )
+        return get_global_config_root(paths_config) / self.config.global_config_filename
 
-        if scope == MarketplaceScope.GLOBAL:
-            return get_global_config_root(paths_config) / self.config.global_config_filename
-
+    def _get_default_project_path(self) -> Path:
         return self.working_dir / self.config.project_subdir_name / self.config.project_config_filename
+
+    def _get_default_user_path(self) -> Path:
+        return self.working_dir / self.config.project_subdir_name / self.config.user_config_filename
+
+    def _write_scope_data(
+        self,
+        scope: ConfigScope,
+        data: dict[str, Any],
+    ) -> Result[None, ConfigError]:
+        config_path = self._get_config_path_for_scope(scope)
+
+        try:
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            config_path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+            return Ok(None)
+        except OSError as exc:
+            return Err(
+                ConfigIOError(
+                    scope=scope,
+                    path=config_path,
+                    message=str(exc),
+                )
+            )
+
+    def _load_all_scopes(
+        self,
+        paths: ResolvedConfigPaths,
+    ) -> Result[tuple[GlobalConfig | None, ProjectConfig | None, UserConfig | None], ConfigError]:
+        global_result = self._load_optional(paths.global_path, GlobalConfig, ConfigScope.GLOBAL)
+        if is_err(global_result):
+            return global_result
+
+        project_result = self._load_optional(paths.project_path, ProjectConfig, ConfigScope.PROJECT)
+        if is_err(project_result):
+            return project_result
+
+        user_result = self._load_optional(paths.user_path, UserConfig, ConfigScope.USER)
+        if is_err(user_result):
+            return user_result
+
+        global_cfg = global_result.unwrap()
+        project_cfg = project_result.unwrap()
+        user_cfg = user_result.unwrap()
+
+        assert global_cfg is None or isinstance(global_cfg, GlobalConfig)
+        assert project_cfg is None or isinstance(project_cfg, ProjectConfig)
+        assert user_cfg is None or isinstance(user_cfg, UserConfig)
+
+        return Ok((global_cfg, project_cfg, user_cfg))
 
     def _load_optional(
         self,

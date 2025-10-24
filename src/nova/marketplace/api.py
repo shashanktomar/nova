@@ -51,7 +51,7 @@ class Marketplace:
             parse_source(source, working_dir=working_dir)
             .and_then(self._fetch_marketplace_to_temp)
             .and_then(self._validate_and_extract_manifest)
-            .and_then(self._check_for_duplicate_name)
+            .and_then(self._check_for_duplicate)
             .and_then(self._move_to_final_location)
             .and_then(self._save_marketplace_state)
             .and_then(save_to_config)
@@ -102,24 +102,22 @@ class Marketplace:
         source, marketplace_dir = data
         return validate_marketplace(marketplace_dir).map(lambda manifest: (source, marketplace_dir, manifest.name))
 
-    def _check_for_duplicate_name(
+    def _check_for_duplicate(
         self,
         data: tuple[MarketplaceSource, Path, str],
     ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
         source, marketplace_dir, marketplace_name = data
 
-        config_result = self._config_provider.get_marketplace_config()
-        if is_err(config_result):
-            return config_result
+        has_marketplace_result = self._config_provider.has_marketplace(marketplace_name, source)
+        if is_err(has_marketplace_result):
+            return has_marketplace_result
 
-        existing_marketplaces = config_result.unwrap()
-
-        if any(m.name == marketplace_name for m in existing_marketplaces):
+        if has_marketplace_result.unwrap():
             return Err(
                 MarketplaceAlreadyExistsError(
                     name=marketplace_name,
-                    existing_source="",
-                    message=f"Marketplace '{marketplace_name}' already exists",
+                    existing_source=str(source),
+                    message=f"Marketplace with name '{marketplace_name}' or source '{source}' already exists",
                 )
             )
 
@@ -188,7 +186,7 @@ class Marketplace:
         source, final_location, marketplace_name = data
 
         config = MarketplaceConfig(name=marketplace_name, source=source)
-        save_result = self._config_provider.add_marketplace_config(config, scope)
+        save_result = self._config_provider.add_marketplace(config, scope)
 
         if is_err(save_result):
             return Err(

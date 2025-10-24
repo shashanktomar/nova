@@ -6,19 +6,16 @@ import os
 
 import yaml
 
+from nova.constants import ENV_PREFIX
 from nova.utils.dicts import deep_merge
+from nova.utils.types import JsonDict
 
 from .models import NovaConfig
-
-ENV_PREFIX = "NOVA_CONFIG__"
-
-
-JSONDict = dict[str, object]
 
 
 def apply_env_overrides(config: NovaConfig) -> NovaConfig:
     """Apply environment variable overrides to config."""
-    override_data: JSONDict = {}
+    override_data: JsonDict = {}
 
     for key, value in os.environ.items():
         if not key.startswith(ENV_PREFIX):
@@ -38,7 +35,7 @@ def apply_env_overrides(config: NovaConfig) -> NovaConfig:
     return NovaConfig.model_validate(merged)
 
 
-def _insert_override(data: JSONDict, path: list[str], value: object) -> None:
+def _insert_override(data: JsonDict, path: list[str], value: object) -> None:
     cursor = data
     *parents, leaf = path
     for segment in parents:

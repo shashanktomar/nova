@@ -15,13 +15,13 @@ from .config import FileConfigPaths
 
 
 @dataclass(frozen=True, slots=True)
-class ConfigPaths:
+class ResolvedConfigPaths:
     global_path: Path | None
     project_path: Path | None
     user_path: Path | None
 
 
-def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ConfigPaths:
+def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ResolvedConfigPaths:
     start_dir = resolve_working_directory(working_dir)
 
     paths_config = PathsConfig(
@@ -33,7 +33,7 @@ def discover_config_paths(working_dir: Path, config: FileConfigPaths) -> ConfigP
     project_root = get_project_root(start_dir, paths_config)
     project_path, user_path = _resolve_project_configs(project_root, config, paths_config)
 
-    return ConfigPaths(
+    return ResolvedConfigPaths(
         global_path=global_path,
         project_path=project_path,
         user_path=user_path,

@@ -20,6 +20,7 @@ def some_function():
 ```
 
 **Why this is critical:**
+
 - Makes dependencies explicit and visible
 - Improves code readability and maintainability
 - Prevents import cycles and circular dependency issues
@@ -28,6 +29,7 @@ def some_function():
 - Makes testing and mocking easier
 
 **The only acceptable exceptions:**
+
 - Avoiding circular imports (but should be fixed architecturally)
 - Conditional imports for optional dependencies
 - Dynamic imports for plugins (very rare)
@@ -47,6 +49,7 @@ from nova.marketplace.api import add_marketplace
 ```
 
 **Why:**
+
 - Clear module boundaries
 - Controlled public APIs
 - Easier refactoring of internal structure
@@ -69,6 +72,7 @@ from nova.config.file.paths import discover_paths
 ```
 
 **Pattern:**
+
 - `.` = current directory (sibling files)
 - `..` = parent directory
 - `...` = grandparent directory (use sparingly)
@@ -90,6 +94,7 @@ from .file.store import FileConfigStore
 ```
 
 **Rules:**
+
 1. Submodules can freely import from parent modules using `..`
 2. Parents should import from submodule's `__init__.py`, not internal files
 3. This prevents circular dependencies and maintains clean hierarchy
@@ -117,6 +122,7 @@ def parse_config() -> NovaConfig:
 ```
 
 **Benefits:**
+
 - Single source of truth for module's public interface
 - Easy to see what's exported
 - Can refactor internals without breaking consumers
@@ -138,6 +144,7 @@ from nova.marketplace.config import MarketplaceConfig
 ```
 
 **Why this matters:**
+
 - Respects module boundaries
 - Allows modules to refactor internals freely
 - Enforces encapsulation
@@ -176,6 +183,7 @@ from nova.utils.functools.models import Result
 ## Summary
 
 **Golden Rules:**
+
 1. All imports at the top of the file
 2. Import from module's `__init__.py` (public API)
 3. Use relative imports within the same module

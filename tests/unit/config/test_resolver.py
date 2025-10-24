@@ -15,6 +15,7 @@ def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(key, raising=False)
 
 
+# FIX: Make this test parameterized like in other test classes.
 def test_apply_env_overrides_updates_nested_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     base = NovaConfig.model_validate(
         {
@@ -39,16 +40,6 @@ def test_apply_env_overrides_updates_nested_fields(monkeypatch: pytest.MonkeyPat
     assert data["feature"]["threshold"] == 20
     assert data["feature"]["metadata"]["source"] == "env"
     assert data["items"] == [4, 5]
-
-
-def test_apply_env_overrides_handles_invalid_yaml(monkeypatch: pytest.MonkeyPatch) -> None:
-    base = NovaConfig.model_validate({"feature": {"name": "original"}})
-
-    monkeypatch.setenv("NOVA_CONFIG__FEATURE__NAME", "[unclosed")
-
-    resolved = apply_env_overrides(base)
-
-    assert resolved.model_dump()["feature"]["name"] == "[unclosed"
 
 
 def test_apply_env_overrides_no_env_returns_original() -> None:

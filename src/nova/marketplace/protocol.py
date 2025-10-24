@@ -7,7 +7,7 @@ from typing import Protocol
 from nova.utils.functools.models import Result
 
 from .config import MarketplaceConfig
-from .models import MarketplaceError, MarketplaceScope
+from .models import MarketplaceError, MarketplaceScope, MarketplaceSource
 
 
 class MarketplaceConfigProvider(Protocol):
@@ -17,7 +17,14 @@ class MarketplaceConfigProvider(Protocol):
         """Get marketplace configuration from all scopes."""
         ...
 
-    def add_marketplace_config(
+    def has_marketplace(self, name: str, source: MarketplaceSource) -> Result[bool, MarketplaceError]:
+        """Check if a marketplace exists with the given name or source.
+
+        Returns True if a marketplace is found with either the same name or the same source.
+        """
+        ...
+
+    def add_marketplace(
         self,
         config: MarketplaceConfig,
         scope: MarketplaceScope,
