@@ -1,0 +1,15 @@
+{
+  "name": "test-one-bundle",
+  "version": "1.0.0",
+  "description": "A test marketplace with one bundle",
+  "owner": {
+    "name": "Test Owner"
+  },
+  "bundles": [
+    {
+      "name": "single-bundle",
+      "description": "A single bundle",
+      "source": "./bundles/single"
+    }
+  ]
+}

@@ -26,14 +26,32 @@ sync:
 nova *args:
     uv run nova {{args}}
 
+# Run manual marketplace CLI tests
+[group('cli')]
+test-marketplace-manual:
+    ./scripts/test-marketplace-cli.sh
+
+# aliases
+
+alias t := test
+alias te := test-e2e
+alias tu := test-unit
+
 ###############################################
 ############# Testing and Linting #############
 ###############################################
 
 # Run tests
 [group('test and lint')]
-test:
-    uv run pytest
+test-e2e:
+    uv run pytest -m e2e
+
+[group('test and lint')]
+test-unit:
+    uv run pytest -m "not e2e"
+
+[group('test and lint')]
+test: test-unit test-e2e
 
 # Run tests with coverage report
 [group('test and lint')]

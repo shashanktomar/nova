@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import uuid
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -92,8 +93,9 @@ class Marketplace:
         if isinstance(source, LocalMarketplaceSource):
             return Ok((source, source.path))
 
-        temp_dir = Path(tempfile.mkdtemp(prefix="nova-marketplace-"))
-        return fetch_marketplace(source, temp_dir).map(lambda path: (source, path))
+        # Create a unique temp directory path (git clone will create it)
+        temp_base = Path(tempfile.gettempdir()) / f"nova-marketplace-{uuid.uuid4().hex}"
+        return fetch_marketplace(source, temp_base).map(lambda path: (source, path))
 
     def _validate_and_extract_manifest(
         self,
@@ -164,7 +166,7 @@ class Marketplace:
             name=marketplace_name,
             source=source,
             install_location=final_location,
-            last_updated=datetime.now(UTC).isoformat(),
+            last_updated=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         )
 
         save_result = self._datastore.save(marketplace_name, state.model_dump(mode="json"))

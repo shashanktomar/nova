@@ -24,8 +24,6 @@ def apply_env_overrides(config: NovaConfig) -> NovaConfig:
         if not path:
             continue
         segments = [segment.lower() for segment in path.split("__") if segment]
-        if not segments:
-            continue
         _insert_override(override_data, segments, _parse_env_value(value))
 
     if not override_data:

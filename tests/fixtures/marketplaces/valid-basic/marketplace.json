@@ -1,0 +1,10 @@
+{
+  "name": "test-marketplace",
+  "version": "1.0.0",
+  "description": "A test marketplace for manual CLI testing",
+  "owner": {
+    "name": "Test Owner",
+    "email": "test@example.com"
+  },
+  "bundles": []
+}

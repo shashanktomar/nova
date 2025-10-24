@@ -648,6 +648,82 @@ result = marketplace.add("anthropics/nova-bundles", scope=MarketplaceScope.GLOBA
 
 **Next:** Complete state management module and finish add() implementation
 
+## E2E Testing Strategy
+
+### Philosophy
+
+E2E tests focus on **real user journeys**, not gap-filling. They verify integration between CLI → API → File System, not individual component behavior (that's what unit tests are for).
+
+### User Journeys to Test
+
+#### Journey 1: Add marketplace from local path (marketplace author workflow)
+```bash
+$ cd ~/my-marketplace
+$ nova marketplace add ./
+✓ Added 'my-marketplace' with 3 bundles (global)
+```
+**E2E Test:** Local development workflow, verify CLI → API → config file → datastore
+
+#### Journey 2: Add marketplace to project scope (team collaboration)
+```bash
+$ cd ~/my-project
+$ nova marketplace add company/internal-bundles --scope project
+✓ Added 'internal-bundles' with 8 bundles (project)
+```
+**E2E Test:** Project scope handling, verify scope isolation works end-to-end
+
+#### Journey 3: Accidentally add duplicate marketplace
+```bash
+$ nova marketplace add owner/repo
+✓ Added 'repo' with 5 bundles (global)
+
+$ nova marketplace add owner/repo
+error: marketplace 'repo' already exists
+hint: use 'nova marketplace remove repo' to replace it
+```
+**E2E Test:** Error prevention + helpful guidance, verify error messages surface correctly
+
+#### Journey 4: Invalid source (user typo/mistake)
+```bash
+$ nova marketplace add ./wrong-path
+error: invalid marketplace source
+hint: valid formats are:
+  - owner/repo (GitHub)
+  - https://... (Git URL)
+  - ./path (local)
+```
+**E2E Test:** Common user mistakes get helpful errors
+
+### What E2E Tests Do NOT Cover
+
+The following are covered by unit tests, not E2E tests:
+- ❌ Every validation error variant (missing fields, bad JSON, etc.)
+- ❌ Every source format variation (git://, ssh://, https://)
+- ❌ Edge cases like singular/plural bundle formatting
+- ❌ All error type permutations
+- ❌ Config merging permutations
+
+### Test Implementation
+
+**File:** `tests/e2e/test_marketplace_cli.py`
+
+**Test Count:** 4-5 focused tests covering real user journeys
+
+**Tools:**
+- `typer.testing.CliRunner` with `isolated_filesystem()`
+- Real fixtures from `tests/fixtures/marketplaces/`
+- XDG environment variables for isolation
+- No mocks - test the full stack
+
+**Pattern:**
+```python
+def test_add_marketplace_from_local_path():
+    with runner.isolated_filesystem():
+        # Setup: Copy fixture, set XDG env vars
+        # Execute: Invoke CLI command
+        # Verify: Exit code, output message, file system state
+```
+
 ## References
 
 - [Feature 2 PRD](../explore/prd/3-features-requirements/feature-2-marketplace-bundle-distribution.md)

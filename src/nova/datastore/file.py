@@ -25,9 +25,13 @@ class FileDataStore:
         try:
             data_file.parent.mkdir(parents=True, exist_ok=True)
 
+            existing_data: dict[str, JsonValue]
             existing_data = {}
             if data_file.exists():
-                existing_data = json.loads(data_file.read_text())
+                existing_data_raw = json.loads(data_file.read_text())
+                if not isinstance(existing_data_raw, dict):
+                    raise TypeError("Existing data must be a JSON object")
+                existing_data = existing_data_raw
 
             existing_data[key] = data
 
@@ -35,7 +39,7 @@ class FileDataStore:
 
             return Ok(None)
 
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             return Err(
                 DataStoreWriteError(
                     namespace=self._namespace,
@@ -57,6 +61,8 @@ class FileDataStore:
 
         try:
             all_data = json.loads(data_file.read_text())
+            if not isinstance(all_data, dict):
+                raise TypeError("Stored data must be a JSON object")
 
             if key not in all_data:
                 return Err(
@@ -69,7 +75,7 @@ class FileDataStore:
 
             return Ok(all_data[key])
 
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             return Err(
                 DataStoreReadError(
                     namespace=self._namespace,
@@ -85,6 +91,8 @@ class FileDataStore:
 
         try:
             all_data = json.loads(data_file.read_text())
+            if not isinstance(all_data, dict):
+                raise TypeError("Stored data must be a JSON object")
 
             if key in all_data:
                 del all_data[key]
@@ -92,7 +100,7 @@ class FileDataStore:
 
             return Ok(None)
 
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
             return Err(
                 DataStoreWriteError(
                     namespace=self._namespace,

@@ -50,7 +50,7 @@ def show(
         raise typer.Exit(code=1)
 
     config = result.unwrap()
-    payload = config.model_dump()
+    payload = config.model_dump(mode="json")
     typer.echo(_format_payload(payload, selected_format))
 
 

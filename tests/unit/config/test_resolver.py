@@ -48,3 +48,25 @@ def test_apply_env_overrides_no_env_returns_original() -> None:
     resolved = apply_env_overrides(base)
 
     assert resolved == base
+
+
+def test_apply_env_overrides_ignores_empty_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = NovaConfig.model_validate({"feature": {"enabled": False}})
+
+    monkeypatch.setenv("NOVA_CONFIG__", "true")
+    monkeypatch.setenv("NOVA_CONFIG____", "true")  # Multiple trailing underscores
+
+    resolved = apply_env_overrides(base)
+
+    assert resolved == base
+
+
+def test_apply_env_overrides_returns_raw_string_on_yaml_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = NovaConfig.model_validate({"feature": {"metadata": {"source": "base"}}})
+
+    monkeypatch.setenv("NOVA_CONFIG__FEATURE__METADATA__SOURCE", "invalid: [")
+
+    resolved = apply_env_overrides(base)
+
+    data = resolved.model_dump()
+    assert data["feature"]["metadata"]["source"] == "invalid: ["

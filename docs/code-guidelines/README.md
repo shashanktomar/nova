@@ -6,3 +6,4 @@
 - [Python Testing Guidelines](./python-testing-guidelines.md)
 - [Modelling Guidelines](./modelling.md)
 - [Functional Error Handling with Result Types](./functools-result.md)
+- [CLI Guidelines](./cli-guidelines.md)

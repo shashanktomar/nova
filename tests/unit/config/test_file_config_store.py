@@ -5,10 +5,13 @@ from pathlib import Path
 import pytest
 import yaml
 
+import nova.config.file.store as store_module
 from nova.config import FileConfigStore
 from nova.config.file.config import FileConfigPaths
+from nova.config.file.paths import ResolvedConfigPaths
 from nova.config.models import (
     ConfigIOError,
+    ConfigNotFoundError,
     ConfigScope,
     ConfigValidationError,
     ConfigYamlError,
@@ -97,6 +100,22 @@ feature:
     assert data["feature"]["metadata"] == {"source": "project"}
     assert data["log"]["level"] == "INFO"
     assert data["list_value"]["items"] == ["x", "y"]
+
+
+def test_get_config_path_for_scope_uses_default_locations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+
+    resolved = ResolvedConfigPaths(global_path=None, project_path=None, user_path=None)
+    monkeypatch.setattr(store_module, "discover_config_paths", lambda *args, **kwargs: resolved)
+
+    global_path = store._get_config_path_for_scope(ConfigScope.GLOBAL)
+    project_path = store._get_config_path_for_scope(ConfigScope.PROJECT)
+    user_path = store._get_config_path_for_scope(ConfigScope.USER)
+
+    assert global_path == tmp_path / "xdg" / TEST_CONFIG.config_dir_name / TEST_CONFIG.global_config_filename
+    assert project_path == tmp_path / TEST_CONFIG.project_subdir_name / TEST_CONFIG.project_config_filename
+    assert user_path == tmp_path / TEST_CONFIG.project_subdir_name / TEST_CONFIG.user_config_filename
 
 
 def test_file_config_store_merges_marketplaces_from_multiple_scopes(tmp_path: Path, monkeypatch) -> None:
@@ -194,6 +213,31 @@ def test_file_config_store_returns_error_on_invalid_yaml(tmp_path: Path, monkeyp
     assert error.message
 
 
+def test_file_config_store_returns_user_scope_error_when_user_yaml_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    write_yaml_dict(global_dir / "config.yaml", {"from_global": True})
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    project_root = tmp_path / "project"
+    project_config_dir = project_root / ".nova"
+    project_config_dir.mkdir(parents=True)
+    write_yaml_dict(project_config_dir / "config.yaml", {"from_project": True})
+    user_config = project_config_dir / "config.local.yaml"
+    user_config.write_text("invalid: [")
+
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    result = store.load()
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, ConfigYamlError)
+    assert error.scope == ConfigScope.USER
+    assert error.path == user_config
+
+
 def test_file_config_store_returns_error_on_non_mapping_root(tmp_path: Path, monkeypatch) -> None:
     """Test that non-mapping root in project config returns ConfigValidationError."""
     global_dir = tmp_path / "xdg" / "nova"
@@ -215,6 +259,41 @@ def test_file_config_store_returns_error_on_non_mapping_root(tmp_path: Path, mon
     assert isinstance(error, ConfigValidationError)
     assert error.path == project_config
     assert error.message == "Configuration root must be a mapping of keys to values."
+
+
+def test_file_config_store_returns_validation_error_when_marketplace_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    write_yaml_dict(global_dir / "config.yaml", {})
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    project_root = tmp_path / "project"
+    project_config_dir = project_root / ".nova"
+    project_config_dir.mkdir(parents=True)
+    project_config = project_config_dir / "config.yaml"
+    write_yaml(
+        project_config,
+        """
+marketplaces:
+  - name: invalid
+    source:
+      type: github
+""",
+    )
+
+    store = FileConfigStore(working_dir=project_root, config=TEST_CONFIG)
+    result = store.load()
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, ConfigValidationError)
+    assert error.scope == ConfigScope.PROJECT
+    assert error.path == project_config
+    assert error.field is not None
+    assert error.field.endswith("repo")
+    assert "Field required" in error.message or "Input should contain" in error.message
 
 
 def test_file_config_store_returns_error_on_falsy_non_mapping_root(
@@ -285,6 +364,23 @@ user_scope: true
     assert isinstance(error, ConfigValidationError)
     assert error.scope == ConfigScope.PROJECT
     assert called_scopes == [ConfigScope.GLOBAL, ConfigScope.PROJECT]
+
+
+def test_load_scope_returns_config_not_found_when_expected_file_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = FileConfigStore(working_dir=tmp_path, config=TEST_CONFIG)
+    missing_path = tmp_path / "missing.yaml"
+    resolved = ResolvedConfigPaths(global_path=missing_path, project_path=None, user_path=None)
+    monkeypatch.setattr(store_module, "discover_config_paths", lambda *args, **kwargs: resolved)
+
+    result = store.load_scope(ConfigScope.GLOBAL)
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, ConfigNotFoundError)
+    assert error.scope == ConfigScope.GLOBAL
+    assert error.expected_path == missing_path
 
 
 def test_file_config_store_returns_error_on_io_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
