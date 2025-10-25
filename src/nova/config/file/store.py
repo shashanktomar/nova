@@ -193,59 +193,55 @@ class FileConfigStore(ConfigStore):
         name: str,
         scope: MarketplaceScope,
     ) -> Result[MarketplaceConfig, MarketplaceError]:
-        config_scope = ConfigScope.GLOBAL if scope == MarketplaceScope.GLOBAL else ConfigScope.PROJECT
+        config_scope = (
+            ConfigScope.GLOBAL
+            if scope == MarketplaceScope.GLOBAL
+            else ConfigScope.PROJECT
+        )
 
         result = self.load_scope(config_scope)
         if is_err(result):
-            config_error = result.unwrap_err()
-            return Err(
-                MarketplaceConfigLoadError(
-                    scope=scope.value,
-                    message=f"Failed to load existing config: {config_error.message}",
-                )
-            )
+            err = result.unwrap_err()
+            return Err(MarketplaceConfigLoadError(
+                scope=scope.value,
+                message=f"Failed to load existing config: {err.message}",
+            ))
 
-        existing_config = result.unwrap()
+        config = result.unwrap()
+        if not (config and config.marketplaces):
+            return Err(MarketplaceNotFoundError(
+                name_or_source=name,
+                message=f"Marketplace '{name}' not found in {scope.value} scope",
+            ))
 
-        if existing_config is None or not existing_config.marketplaces:
-            return Err(
-                MarketplaceNotFoundError(
-                    name_or_source=name,
-                    message=f"Marketplace '{name}' not found in {scope.value} scope",
-                )
-            )
+        index = next(
+            (i for i, m in enumerate(config.marketplaces) if m.name == name),
+            None,
+        )
+        if index is None:
+            return Err(MarketplaceNotFoundError(
+                name_or_source=name,
+                message=f"Marketplace '{name}' not found in {scope.value} scope",
+            ))
 
-        # Find the marketplace to remove
-        removed_config = None
-        remaining_marketplaces = []
+        removed = config.marketplaces[index]
+        data = {
+            "marketplaces": [
+                m.model_dump(mode="json")
+                for i, m in enumerate(config.marketplaces)
+                if i != index
+            ]
+        }
 
-        for marketplace in existing_config.marketplaces:
-            if marketplace.name == name:
-                removed_config = marketplace
-            else:
-                remaining_marketplaces.append(marketplace.model_dump(mode="json"))
+        write = self._write_scope_data(config_scope, data)
+        if is_err(write):
+            err = write.unwrap_err()
+            return Err(MarketplaceConfigSaveError(
+                scope=scope.value,
+                message=f"Failed to write config: {err.message}",
+            ))
 
-        if removed_config is None:
-            return Err(
-                MarketplaceNotFoundError(
-                    name_or_source=name,
-                    message=f"Marketplace '{name}' not found in {scope.value} scope",
-                )
-            )
-
-        data = {"marketplaces": remaining_marketplaces}
-
-        write_result = self._write_scope_data(config_scope, data)
-        if is_err(write_result):
-            config_error = write_result.unwrap_err()
-            return Err(
-                MarketplaceConfigSaveError(
-                    scope=scope.value,
-                    message=f"Failed to write config: {config_error.message}",
-                )
-            )
-
-        return Ok(removed_config)
+        return Ok(removed)
 
     def _get_config_path_for_scope(self, scope: ConfigScope) -> Path:
         paths = discover_config_paths(self.working_dir, self.settings)

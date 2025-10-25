@@ -44,14 +44,12 @@ def show(
         working_dir=working_dir,
         settings=settings.to_config_store_settings(),
     )
-    result = store.load()
+    result = store.load().map(lambda r: r.model_dump(mode="json"))
     if is_err(result):
         _handle_error(result.err())
         raise typer.Exit(code=1)
 
-    config = result.unwrap()
-    payload = config.model_dump(mode="json")
-    typer.echo(_format_payload(payload, selected_format))
+    typer.echo(_format_payload(result.unwrap(), selected_format))
 
 
 def _format_payload(payload: dict[str, object], format: str) -> str:

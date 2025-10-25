@@ -603,12 +603,46 @@ def test_remove_preserves_local_directory(
     assert fake_location.exists()
 
 
-def test_remove_fails_when_not_found(
+def test_remove_succeeds_when_state_missing(
     marketplace: Marketplace,
+    config_provider: FakeConfigProvider,
     datastore: FakeDatastore,
 ) -> None:
+    source = GitHubMarketplaceSource(type="github", repo="owner/repo")
+    removed_config = MarketplaceConfig(name="test-mp", source=source)
+
     datastore.set_load_result(
-        Err(DataStoreKeyNotFoundError(namespace="marketplaces", key="unknown", message="Not found"))
+        Err(
+            DataStoreKeyNotFoundError(
+                namespace="marketplaces",
+                key="test-mp",
+                message="Key not found",
+            )
+        )
+    )
+    config_provider.set_remove_marketplace_result(Ok(removed_config))
+
+    result = marketplace.remove("test-mp", scope=MarketplaceScope.GLOBAL)
+
+    assert is_ok(result)
+    info = result.unwrap()
+    assert info.name == "test-mp"
+    assert info.bundle_count == 0
+    assert len(config_provider.calls["remove"]) == 1
+    assert datastore.deleted == []
+
+
+def test_remove_fails_when_not_found(
+    marketplace: Marketplace,
+    config_provider: FakeConfigProvider,
+) -> None:
+    config_provider.set_remove_marketplace_result(
+        Err(
+            MarketplaceNotFoundError(
+                name_or_source="unknown",
+                message="Marketplace 'unknown' not found",
+            )
+        )
     )
 
     result = marketplace.remove("unknown", scope=MarketplaceScope.GLOBAL)

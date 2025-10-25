@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from nova.common import JsonValue
 from nova.utils.functools.models import Result
-from nova.utils.types import JsonValue
 
 from .models import DataStoreError
 

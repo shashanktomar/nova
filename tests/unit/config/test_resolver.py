@@ -15,7 +15,6 @@ def _clear_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(key, raising=False)
 
 
-# FIX: Make this test parameterized like in other test classes.
 def test_apply_env_overrides_updates_nested_fields(monkeypatch: pytest.MonkeyPatch) -> None:
     base = NovaConfig.model_validate(
         {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from nova.utils.types import DirectUrl, GitHubRepo, GitUrl, NonEmptySequence, NonEmptyString
+from nova.common import DirectUrl, GitHubRepo, GitUrl, NonEmptySequence, NonEmptyString
 
 
 class _StringModel(BaseModel):

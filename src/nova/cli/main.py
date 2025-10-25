@@ -37,8 +37,7 @@ def _setup_logging() -> None:
     config_store = FileConfigStore(
         settings=settings.to_config_store_settings(),
     )
-    global_config_result = config_store.load_scope(ConfigScope.GLOBAL)
-    global_config = global_config_result.unwrap_or(None)
+    global_config = config_store.load_scope(ConfigScope.GLOBAL).unwrap_or(None)
     logging_config = global_config.logging if global_config else LoggingConfig()
 
     if logging_config.enabled:

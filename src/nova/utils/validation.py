@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
-__all__ = ["format_validation_error"]
-
 
 def format_validation_error(kind: str, error: ValidationError) -> str:
     """Return a concise validation error message scoped to the provided kind."""

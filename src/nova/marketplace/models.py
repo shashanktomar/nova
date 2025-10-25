@@ -9,7 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, DirectoryPath, EmailStr
 from pydantic_extra_types.semantic_version import SemanticVersion
 
-from nova.utils.types import GitHubRepo, GitUrl, NonEmptyString
+from nova.common import GitHubRepo, GitUrl, NonEmptyString
 
 
 class MarketplaceSourceType(str, Enum):

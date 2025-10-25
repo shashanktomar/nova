@@ -62,9 +62,6 @@ def get_data_directory(config: PathsConfig) -> Path:
     return base_dir / config.config_dir_name
 
 
-# New functions using AppDirectories
-
-
 def get_global_config_root_from_dirs(directories: AppDirectories) -> Path:
     """Get global config root directory using AppDirectories.
 

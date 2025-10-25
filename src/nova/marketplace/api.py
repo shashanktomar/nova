@@ -6,12 +6,14 @@ import json
 import shutil
 import tempfile
 import uuid
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
 from nova.common import create_logger
 from nova.datastore import DataStore
+from nova.datastore.models import DataStoreKeyNotFoundError
 from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err
 from nova.utils.paths import get_data_directory_from_dirs
@@ -34,6 +36,16 @@ from .sources import parse_source
 from .validator import validate_marketplace
 
 logger = create_logger("marketplace")
+
+
+@dataclass(frozen=True)
+class _RemovalContext:
+    """Internal data passed between marketplace removal steps."""
+
+    name: str
+    config: MarketplaceConfig
+    state: MarketplaceState | None = None
+    info: MarketplaceInfo | None = None
 
 
 class Marketplace:
@@ -89,14 +101,15 @@ class Marketplace:
         """Remove a marketplace by name or source."""
         logger.info("Removing marketplace", name_or_source=name_or_source, scope=scope.value if scope else "any")
 
+        remove_from_scope = partial(self._remove_from_config, scope=scope)
+
         result = (
             self._resolve_marketplace_name(name_or_source, working_dir)
-            .and_then(self._load_marketplace_state)
-            .and_then(self._attach_marketplace_info)
-            .and_then(lambda data: self._remove_from_config_with_info(data, scope))
-            .and_then(self._delete_marketplace_state_with_info)
-            .and_then(self._cleanup_directory_with_info)
-            .map(lambda data: data[1])
+            .and_then(remove_from_scope)
+            .and_then(self._load_state_and_info)
+            .and_then(self._delete_state_if_present)
+            .and_then(self._cleanup_directory_if_present)
+            .map(self._finalize_info)
         )
 
         if is_err(result):
@@ -271,25 +284,110 @@ class Marketplace:
             bundle_count=bundle_count,
         )
 
+    def _remove_from_config(
+        self,
+        name: str,
+        scope: MarketplaceScope | None,
+    ) -> Result[_RemovalContext, MarketplaceError]:
+        return self._config_provider.remove_marketplace(name, scope).map(
+            lambda config: _RemovalContext(name=name, config=config)
+        )
+
+    def _load_state_and_info(
+        self,
+        context: _RemovalContext,
+    ) -> Result[_RemovalContext, MarketplaceError]:
+        load_result = self._datastore.load(context.name)
+        if is_err(load_result):
+            error = load_result.unwrap_err()
+            if isinstance(error, DataStoreKeyNotFoundError):
+                logger.warning(
+                    "Marketplace state missing during removal; proceeding with config cleanup",
+                    name=context.name,
+                )
+                return Ok(
+                    replace(
+                        context,
+                        state=None,
+                        info=context.info or self._build_info_from_config(context.config),
+                    )
+                )
+
+            return Err(
+                MarketplaceAddError(
+                    source=str(context.config.source),
+                    message=f"Failed to load marketplace state: {error.message}",
+                )
+            )
+
+        state_data = load_result.unwrap()
+        state = MarketplaceState.model_validate(state_data)
+
+        return self._attach_marketplace_info(state).map(
+            lambda data: replace(context, state=data[0], info=data[1])
+        )
+
+    def _delete_state_if_present(
+        self,
+        context: _RemovalContext,
+    ) -> Result[_RemovalContext, MarketplaceError]:
+        if context.state is None:
+            return Ok(context)
+
+        delete_result = self._datastore.delete(context.name)
+        if is_err(delete_result):
+            error = delete_result.unwrap_err()
+            return Err(
+                MarketplaceAddError(
+                    source=str(context.config.source),
+                    message=f"Failed to delete marketplace state: {error.message}",
+                )
+            )
+
+        return Ok(context)
+
+    def _cleanup_directory_if_present(
+        self,
+        context: _RemovalContext,
+    ) -> Result[_RemovalContext, MarketplaceError]:
+        state = context.state
+        if state is None or isinstance(state.source, LocalMarketplaceSource):
+            return Ok(context)
+
+        if state.install_location.exists():
+            shutil.rmtree(state.install_location)
+
+        return Ok(context)
+
+    def _finalize_info(self, context: _RemovalContext) -> MarketplaceInfo:
+        if context.info is not None:
+            return context.info
+        return self._build_info_from_config(context.config)
+
+    def _build_info_from_config(self, config: MarketplaceConfig) -> MarketplaceInfo:
+        return MarketplaceInfo(
+            name=config.name,
+            description="",
+            source=config.source,
+            bundle_count=0,
+        )
+
     def _resolve_marketplace_name(
         self,
         name_or_source: str,
         working_dir: Path | None,
     ) -> Result[str, MarketplaceError]:
-        # Try parsing as source
         source_result = parse_source(name_or_source, working_dir=working_dir)
-        if not is_err(source_result):
-            # It's a valid source, find marketplace by source
-            source = source_result.unwrap()
-            config_result = self._config_provider.get_marketplace_config()
-            if is_err(config_result):
-                return config_result
+        if is_err(source_result):
+            return Ok(name_or_source)
 
-            marketplaces = config_result.unwrap()
-            for marketplace in marketplaces:
-                if marketplace.source == source:
-                    return Ok(marketplace.name)
+        source = source_result.unwrap()
+        config_result = self._config_provider.get_marketplace_config()
+        if is_err(config_result):
+            return config_result
 
+        match = next((cfg.name for cfg in config_result.unwrap() if cfg.source == source), None)
+        if match is None:
             return Err(
                 MarketplaceNotFoundError(
                     name_or_source=name_or_source,
@@ -297,25 +395,7 @@ class Marketplace:
                 )
             )
 
-        # Not a valid source, treat as name
-        return Ok(name_or_source)
-
-    def _load_marketplace_state(
-        self,
-        name: str,
-    ) -> Result[MarketplaceState, MarketplaceError]:
-        load_result = self._datastore.load(name)
-        if is_err(load_result):
-            return Err(
-                MarketplaceNotFoundError(
-                    name_or_source=name,
-                    message=f"Marketplace '{name}' state not found",
-                )
-            )
-
-        state_data = load_result.unwrap()
-        state = MarketplaceState.model_validate(state_data)
-        return Ok(state)
+        return Ok(match)
 
     def _attach_marketplace_info(
         self,
@@ -339,48 +419,22 @@ class Marketplace:
 
         return Ok((state, info))
 
-    def _remove_from_config_with_info(
+    def _load_marketplace_state(
         self,
-        data: tuple[MarketplaceState, MarketplaceInfo],
-        scope: MarketplaceScope | None,
-    ) -> Result[tuple[MarketplaceState, MarketplaceInfo], MarketplaceError]:
-        state, info = data
-        remove_result = self._config_provider.remove_marketplace(state.name, scope)
-        if is_err(remove_result):
-            return remove_result
-
-        return Ok((state, info))
-
-    def _delete_marketplace_state_with_info(
-        self,
-        data: tuple[MarketplaceState, MarketplaceInfo],
-    ) -> Result[tuple[MarketplaceState, MarketplaceInfo], MarketplaceError]:
-        state, info = data
-        delete_result = self._datastore.delete(state.name)
-        if is_err(delete_result):
+        name: str,
+    ) -> Result[MarketplaceState, MarketplaceError]:
+        load_result = self._datastore.load(name)
+        if is_err(load_result):
             return Err(
-                MarketplaceAddError(
-                    source=str(state.source),
-                    message=f"Failed to delete marketplace state: {delete_result.unwrap_err().message}",
+                MarketplaceNotFoundError(
+                    name_or_source=name,
+                    message=f"Marketplace '{name}' state not found",
                 )
             )
 
-        return Ok((state, info))
-
-    def _cleanup_directory_with_info(
-        self,
-        data: tuple[MarketplaceState, MarketplaceInfo],
-    ) -> Result[tuple[MarketplaceState, MarketplaceInfo], MarketplaceError]:
-        state, info = data
-
-        if isinstance(state.source, LocalMarketplaceSource):
-            # Don't delete local source directories
-            return Ok((state, info))
-
-        if state.install_location.exists():
-            shutil.rmtree(state.install_location)
-
-        return Ok((state, info))
+        state_data = load_result.unwrap()
+        state = MarketplaceState.model_validate(state_data)
+        return Ok(state)
 
     def _get_all_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         return self._config_provider.get_marketplace_config()

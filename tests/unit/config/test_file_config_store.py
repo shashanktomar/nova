@@ -21,9 +21,10 @@ from nova.marketplace.models import (
     GitHubMarketplaceSource,
     MarketplaceConfigLoadError,
     MarketplaceConfigSaveError,
+    MarketplaceNotFoundError,
 )
 from nova.utils.directories import AppDirectories
-from nova.utils.functools.models import is_err, is_ok
+from nova.utils.functools.models import Err, is_err, is_ok
 
 TEST_SETTINGS = ConfigStoreSettings(
     directories=AppDirectories(
@@ -992,3 +993,121 @@ def test_add_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch) ->
     assert is_err(result)
     error = result.err_value
     assert isinstance(error, MarketplaceConfigSaveError)
+
+
+def test_remove_marketplace_removes_entry_from_global_scope(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+
+    marketplace = MarketplaceConfig(
+        name="global-marketplace",
+        source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
+    )
+    write_yaml_dict(global_dir / "config.yaml", {"marketplaces": [marketplace.model_dump(mode="json")]})
+
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
+
+    result = store.remove_marketplace("global-marketplace", MarketplaceScope.GLOBAL)
+
+    assert is_ok(result)
+    removed = result.unwrap()
+    assert removed.name == "global-marketplace"
+    config_data = yaml.safe_load((global_dir / "config.yaml").read_text()) or {}
+    assert config_data.get("marketplaces") == []
+
+
+def test_remove_marketplace_with_scope_none_checks_all_scopes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    project_config_dir = project_root / ".nova"
+    project_config_dir.mkdir()
+
+    marketplace = MarketplaceConfig(
+        name="project-marketplace",
+        source=GitHubMarketplaceSource(type="github", repo="owner/internal"),
+    )
+    write_yaml_dict(project_config_dir / "config.yaml", {"marketplaces": [marketplace.model_dump(mode="json")]})
+
+    store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
+
+    result = store.remove_marketplace("project-marketplace")
+
+    assert is_ok(result)
+    removed = result.unwrap()
+    assert removed.name == "project-marketplace"
+    config_data = yaml.safe_load((project_config_dir / "config.yaml").read_text()) or {}
+    assert config_data.get("marketplaces") == []
+
+
+def test_remove_marketplace_returns_not_found_when_missing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+    write_yaml_dict(global_dir / "config.yaml", {"marketplaces": []})
+
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
+
+    result = store.remove_marketplace("missing", MarketplaceScope.GLOBAL)
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, MarketplaceNotFoundError)
+    assert error.name_or_source == "missing"
+
+
+def test_remove_marketplace_propagates_load_errors(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
+
+    def fake_load_scope(self: FileConfigStore, scope: ConfigScope):
+        return Err(
+            ConfigIOError(
+                scope=scope,
+                path=tmp_path / "missing",
+                message="boom",
+            )
+        )
+
+    monkeypatch.setattr(FileConfigStore, "load_scope", fake_load_scope, raising=False)
+
+    result = store.remove_marketplace("test", MarketplaceScope.GLOBAL)
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, MarketplaceConfigLoadError)
+    assert error.scope == MarketplaceScope.GLOBAL.value
+
+
+def test_remove_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    global_dir = tmp_path / "xdg" / "nova"
+    global_dir.mkdir(parents=True)
+
+    marketplace = MarketplaceConfig(
+        name="global-marketplace",
+        source=GitHubMarketplaceSource(type="github", repo="owner/repo"),
+    )
+    write_yaml_dict(global_dir / "config.yaml", {"marketplaces": [marketplace.model_dump(mode="json")]})
+
+    store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
+
+    def fake_write_scope_data(self: FileConfigStore, scope: ConfigScope, data: dict):
+        return Err(
+            ConfigIOError(
+                scope=scope,
+                path=tmp_path / "fail",
+                message="write failed",
+            )
+        )
+
+    monkeypatch.setattr(FileConfigStore, "_write_scope_data", fake_write_scope_data, raising=False)
+
+    result = store.remove_marketplace("global-marketplace", MarketplaceScope.GLOBAL)
+
+    assert is_err(result)
+    error = result.err_value
+    assert isinstance(error, MarketplaceConfigSaveError)
+    assert error.scope == MarketplaceScope.GLOBAL.value

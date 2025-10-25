@@ -37,7 +37,7 @@ depends_on = ["nova.constants"]
 
 [[modules]]
 path = "nova.datastore"
-depends_on = ["nova.utils"]
+depends_on = ["nova.utils", "nova.common"]
 
 [[modules]]
 path = "nova.config"

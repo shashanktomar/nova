@@ -6,9 +6,9 @@ import os
 
 import yaml
 
+from nova.common import JsonDict
 from nova.constants import ENV_PREFIX
 from nova.utils.dicts import deep_merge
-from nova.utils.types import JsonDict
 
 from .models import NovaConfig
 

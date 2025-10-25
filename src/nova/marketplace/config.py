@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
-from nova.utils.types import NonEmptyString
+from nova.common import NonEmptyString
 
 from .models import MarketplaceSource
 

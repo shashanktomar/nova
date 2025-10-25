@@ -261,8 +261,32 @@ def test_remove_marketplace_with_scope() -> None:
         assert len(config.get("marketplaces", [])) == 0
 
 
+def test_remove_marketplace_missing_state() -> None:
+    """Journey 8: removal succeeds even if marketplace state is missing."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        local_dir = base / "local-marketplace"
+        _copy_marketplace_fixture("valid-basic", local_dir)
+
+        add_result = _invoke(["marketplace", "add", str(local_dir)], env=env)
+        assert add_result.exit_code == 0
+
+        data_file = Path(env["XDG_DATA_HOME"]) / "nova" / "marketplaces" / "data.json"
+        if data_file.exists():
+            data_file.unlink()
+
+        remove_result = _invoke(["marketplace", "remove", "test-marketplace"], env=env)
+        assert remove_result.exit_code == 0, remove_result.stderr
+        assert "✓ Removed 'test-marketplace'" in remove_result.stdout
+
+        config_path = Path(env["XDG_CONFIG_HOME"]) / "nova" / "config.yaml"
+        config = _read_config(config_path)
+        assert len(config.get("marketplaces", [])) == 0
+
+
 def test_remove_marketplace_not_found() -> None:
-    """Journey 8: removing non-existent marketplace shows helpful error."""
+    """Journey 9: removing non-existent marketplace shows helpful error."""
     with RUNNER.isolated_filesystem():
         base = Path.cwd()
         env = _create_env(base)
@@ -275,7 +299,7 @@ def test_remove_marketplace_not_found() -> None:
 
 
 def test_list_marketplaces() -> None:
-    """Journey 9: list all configured marketplaces."""
+    """Journey 10: list all configured marketplaces."""
     with RUNNER.isolated_filesystem():
         base = Path.cwd()
         env = _create_env(base)
@@ -298,7 +322,7 @@ def test_list_marketplaces() -> None:
 
 
 def test_list_no_marketplaces() -> None:
-    """Journey 10: list shows message when no marketplaces configured."""
+    """Journey 11: list shows message when no marketplaces configured."""
     with RUNNER.isolated_filesystem():
         base = Path.cwd()
         env = _create_env(base)
@@ -310,7 +334,7 @@ def test_list_no_marketplaces() -> None:
 
 
 def test_show_marketplace() -> None:
-    """Journey 11: show details for specific marketplace."""
+    """Journey 12: show details for specific marketplace."""
     with RUNNER.isolated_filesystem():
         base = Path.cwd()
         env = _create_env(base)
@@ -329,7 +353,7 @@ def test_show_marketplace() -> None:
 
 
 def test_show_marketplace_not_found() -> None:
-    """Journey 12: show non-existent marketplace shows error."""
+    """Journey 13: show non-existent marketplace shows error."""
     with RUNNER.isolated_filesystem():
         base = Path.cwd()
         env = _create_env(base)
