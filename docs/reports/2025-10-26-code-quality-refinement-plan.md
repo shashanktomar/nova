@@ -26,15 +26,15 @@ All three agents independently identified **Result type handling** as the main o
 
 ## Progress Tracker
 
-**Overall Progress:** 11 of 44 manual checks refactored (25% complete) ⚙️
+**Overall Progress:** 16 of 44 manual checks refactored (36% complete) ⚙️
 
 ### Completed Tasks ✅
 - ✅ **Task 5a**: Logging with `inspect_err()` - 5 locations (commit: c281673)
 - ✅ **Task 5b**: Error transformation with `map_err()` - 6 locations (commit: 639ba6f)
+- ✅ **Task 6**: CLI pattern matching - 5 locations (commit: ae4b798)
 
 ### In Progress 🔄
-- 🔄 **Task 6**: CLI pattern matching - 5 locations (next)
-- ⏳ **Task 7**: Complex conditional logic - 4 locations (pending)
+- 🔄 **Task 7**: Complex conditional logic - ~9 locations (next)
 
 ### Remaining Tasks ⏳
 - ⏳ Code deduplication tasks (deferred for later session)
@@ -42,8 +42,8 @@ All three agents independently identified **Result type handling** as the main o
 ### Metrics
 | Metric | Before | Current | Target | Progress |
 |--------|--------|---------|--------|----------|
-| Manual Result checks | 44 | 33 | ~5 | 25% |
-| Files refactored | 0 | 2 | 4 | 50% |
+| Manual Result checks | 44 | 24 | ~5 | 45% |
+| Files refactored | 0 | 4 | 4 | 100% |
 | Tests passing | ✅ 259 | ✅ 259 | ✅ 259 | 100% |
 | Type errors | 0 | 0 | 0 | ✅ |
 
@@ -695,6 +695,26 @@ The codebase already uses:
 - Used `.map()` for value transformations
 - Eliminated intermediate variables where possible
 - Kept intermediate checks where additional logic required
+
+**Test Results:** ✅ All 259 tests passing
+
+---
+
+#### Task 6: CLI Pattern Matching ✅
+**Commit:** ae4b798
+**Files Changed:** 2 files, +47/-55 lines
+**Locations:**
+1. ✅ cli/commands/marketplace.py `add()` - Replaced manual check with match/case
+2. ✅ cli/commands/marketplace.py `remove()` - Replaced manual check with match/case
+3. ✅ cli/commands/marketplace.py `list_marketplaces()` - Replaced manual check with match/case
+4. ✅ cli/commands/marketplace.py `show()` - Replaced manual check with match/case
+5. ✅ cli/commands/config.py `show()` - Replaced manual check with match/case
+
+**Approach:**
+- Used Python 3.10+ pattern matching with `match`/`case` statements
+- Replaced `is_err` imports with `Ok`, `Err` imports
+- Eliminated intermediate `result` variables
+- Clearer success/error branch separation
 
 **Test Results:** ✅ All 259 tests passing
 
