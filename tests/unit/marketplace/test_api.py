@@ -111,6 +111,7 @@ def marketplace(config_provider: FakeConfigProvider, datastore: FakeDatastore) -
 class DummyManifest:
     def __init__(self, name: str) -> None:
         self.name = name
+        self.bundles = []
 
 
 def test_add_succeeds_for_remote_source(
@@ -431,7 +432,9 @@ def test_get_returns_marketplace_info(
 ) -> None:
     mp_dir = tmp_path / "test-mp"
     mp_dir.mkdir()
-    (mp_dir / "marketplace.json").write_text('{"name": "test-mp", "description": "Test", "bundles": [{"name": "b1"}, {"name": "b2"}]}')
+    (mp_dir / "marketplace.json").write_text(
+        '{"name": "test-mp", "description": "Test", "bundles": [{"name": "b1"}, {"name": "b2"}]}'
+    )
 
     source = GitHubMarketplaceSource(type="github", repo="owner/repo")
     state_data = {
@@ -457,7 +460,9 @@ def test_get_fails_when_not_found(
     marketplace: Marketplace,
     datastore: FakeDatastore,
 ) -> None:
-    datastore.set_load_result(Err(DataStoreKeyNotFoundError(namespace="marketplaces", key="unknown", message="Not found")))
+    datastore.set_load_result(
+        Err(DataStoreKeyNotFoundError(namespace="marketplaces", key="unknown", message="Not found"))
+    )
 
     result = marketplace.get("unknown")
 
@@ -602,7 +607,9 @@ def test_remove_fails_when_not_found(
     marketplace: Marketplace,
     datastore: FakeDatastore,
 ) -> None:
-    datastore.set_load_result(Err(DataStoreKeyNotFoundError(namespace="marketplaces", key="unknown", message="Not found")))
+    datastore.set_load_result(
+        Err(DataStoreKeyNotFoundError(namespace="marketplaces", key="unknown", message="Not found"))
+    )
 
     result = marketplace.remove("unknown", scope=MarketplaceScope.GLOBAL)
 

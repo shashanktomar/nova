@@ -5,8 +5,9 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from nova.common import LoggingConfig
 from nova.marketplace.config import MarketplaceConfig
 
 
@@ -71,6 +72,7 @@ class GlobalConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     marketplaces: list[MarketplaceConfig] = []
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
 class ProjectConfig(BaseModel):
@@ -80,11 +82,31 @@ class ProjectConfig(BaseModel):
 
     marketplaces: list[MarketplaceConfig] = []
 
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_no_logging(cls, data: dict) -> dict:
+        if isinstance(data, dict) and "logging" in data:
+            raise ValueError(
+                "Logging configuration can only be set in global config (~/.config/nova/config.yaml). "
+                "Remove 'logging' from project config (.nova/config.yaml)."
+            )
+        return data
+
 
 class UserConfig(BaseModel):
     """User configuration (.nova/config.local.yaml)."""
 
     model_config = ConfigDict(extra="allow")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_no_logging(cls, data: dict) -> dict:
+        if isinstance(data, dict) and "logging" in data:
+            raise ValueError(
+                "Logging configuration can only be set in global config (~/.config/nova/config.yaml). "
+                "Remove 'logging' from user config (.nova/config.local.yaml)."
+            )
+        return data
 
 
 class NovaConfig(BaseModel):
@@ -93,3 +115,4 @@ class NovaConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     marketplaces: list[MarketplaceConfig] = []
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)

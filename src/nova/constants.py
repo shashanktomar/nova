@@ -1,4 +1,4 @@
 """Project-wide constants for Nova."""
 
-# Environment variable prefix for configuration overrides
 ENV_PREFIX = "NOVA_CONFIG__"
+APP_NAME = "nova"

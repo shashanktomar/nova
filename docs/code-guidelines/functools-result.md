@@ -1,6 +1,6 @@
 # Functional Error Handling with Result Types
 
-This document outlines the guidelines for using Result types and functional error handling patterns in the Luno codebase.
+This document outlines the guidelines for using Result types and functional error handling patterns in the Nova codebase.
 
 ## Philosophy
 
@@ -10,6 +10,21 @@ We use functional error handling patterns inspired by Rust to achieve:
 - **Explicit handling**: Callers must handle both success and error cases
 - **Composability**: Results can be chained and transformed
 - **No hidden control flow**: No unexpected exceptions
+
+## IMPORTANT: Use Result Methods
+
+**The Result type provides many powerful methods. USE THEM!**
+
+Instead of manually checking with `is_ok()` and `is_err()`, prefer using the built-in Result methods:
+- `unwrap_or()` - Provide default values
+- `unwrap_or_else()` - Compute defaults from errors
+- `map()` - Transform success values
+- `map_err()` - Transform error values
+- `and_then()` - Chain operations that return Results
+- `or_else()` - Provide fallback operations
+- Pattern matching with `match` statements
+
+See the "Basic Usage" and "Advanced Patterns" sections below for examples.
 
 ## Expected vs Unexpected Errors
 
@@ -115,7 +130,7 @@ def call_external_api(endpoint: str) -> Result[Response, RateLimitError]:
 ### Handling Results
 
 ```python
-# Pattern matching (Python 3.10+)
+# PREFERRED: Pattern matching (Python 3.10+)
 result = divide(10, 2)
 match result:
     case Ok(value):
@@ -123,17 +138,18 @@ match result:
     case Err(error):
         print(f"Error: {error}")
 
-# Using helper functions
+# PREFERRED: Safe unwrapping with defaults
+value = result.unwrap_or(0.0)
+value = result.unwrap_or_else(lambda err: log_and_return_default(err))
+
+# AVOID: Manual checking with is_ok/is_err (only use when Result methods don't fit)
+# Only use this pattern when you truly need different control flow based on success/error
 if is_ok(result):
     value = result.unwrap()
     print(f"Success: {value}")
 else:
     error = result.unwrap_err()
     print(f"Failed: {error}")
-
-# Safe unwrapping with defaults
-value = result.unwrap_or(0.0)
-value = result.unwrap_or_else(lambda err: log_and_return_default(err))
 ```
 
 ## Advanced Patterns
@@ -270,7 +286,50 @@ def transfer_funds(from_id: str, to_id: str, amount: Decimal) -> Result[Transact
 
 ## Anti-Patterns to Avoid
 
-### 1. Don't Mix Paradigms
+### 1. Not Using Result Methods
+
+```python
+# BAD: Manual checking when Result methods would work
+if is_ok(result):
+    value = result.unwrap()
+else:
+    value = default_value
+
+# GOOD: Use unwrap_or
+value = result.unwrap_or(default_value)
+
+# BAD: Nested if statements
+if is_ok(result):
+    value = result.unwrap()
+    if is_ok(other_result):
+        other = other_result.unwrap()
+        return Ok(process(value, other))
+    else:
+        return Err(other_result.unwrap_err())
+else:
+    return Err(result.unwrap_err())
+
+# GOOD: Chain with and_then
+return result.and_then(lambda value:
+    other_result.map(lambda other: process(value, other))
+)
+
+# BAD: Checking and extracting in separate steps
+if is_ok(global_config_result):
+    global_config = global_config_result.unwrap()
+    if global_config is None:
+        logging_config = LoggingConfig()
+    else:
+        logging_config = global_config.logging
+else:
+    logging_config = LoggingConfig()
+
+# GOOD: Use unwrap_or and simple conditional
+global_config = global_config_result.unwrap_or(None)
+logging_config = global_config.logging if global_config else LoggingConfig()
+```
+
+### 2. Don't Mix Paradigms
 
 ```python
 # Bad: Returning Result but also raising exceptions
@@ -280,7 +339,7 @@ def bad_function() -> Result[int, str]:
     return Ok(42)
 ```
 
-### 2. Don't Use Result for Unexpected Errors
+### 3. Don't Use Result for Unexpected Errors
 
 ```python
 # Bad: Database errors are unexpected
@@ -291,7 +350,7 @@ def get_user(id: int) -> Result[User, DatabaseError]:
         return Err(DatabaseError(str(e)))  # Should raise instead
 ```
 
-### 3. Don't Ignore Error Context
+### 4. Don't Ignore Error Context
 
 ```python
 # Bad: Losing error information
@@ -332,9 +391,12 @@ def execute_transfer(from_id: str, to_id: str, amount: Decimal) -> Result[Transf
 
 ## Summary
 
+- **ALWAYS use Result methods** instead of manual `is_ok()`/`is_err()` checks when possible
 - Use `Result[T, E]` for **expected errors** that are part of business logic
 - Use **exceptions** for unexpected errors (bugs, system failures)
 - Model errors as **Pydantic models** for structure and type safety
-- **Chain operations** with map, and_then, or_else for composability
+- **Chain operations** with `map()`, `and_then()`, `or_else()` for composability
+- Use `unwrap_or()` and `unwrap_or_else()` instead of conditional unwrapping
+- Prefer **pattern matching** over manual result inspection
 - Be **explicit** about error types in function signatures
 - Handle errors at the **appropriate level** with proper context

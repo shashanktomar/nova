@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
+from nova.common import create_logger
 from nova.datastore import DataStore
 from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err
@@ -32,6 +33,8 @@ from .protocol import MarketplaceConfigProvider
 from .sources import parse_source
 from .validator import validate_marketplace
 
+logger = create_logger("marketplace")
+
 
 class Marketplace:
     """Marketplace management API."""
@@ -53,9 +56,10 @@ class Marketplace:
         scope: MarketplaceScope,
         working_dir: Path | None = None,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
+        logger.info("Adding marketplace", source=source, scope=scope.value)
         save_to_config = partial(self._save_to_config, scope=scope)
 
-        return (
+        result = (
             parse_source(source, working_dir=working_dir)
             .and_then(self._fetch_marketplace_to_temp)
             .and_then(self._validate_and_extract_manifest)
@@ -66,6 +70,15 @@ class Marketplace:
             .map(self._build_marketplace_info)
         )
 
+        if is_err(result):
+            error = result.unwrap_err()
+            logger.error("Failed to add marketplace", source=source, error=error.message)
+        else:
+            info = result.unwrap()
+            logger.success("Marketplace added", name=info.name, bundles=info.bundle_count)
+
+        return result
+
     def remove(
         self,
         name_or_source: str,
@@ -74,7 +87,9 @@ class Marketplace:
         working_dir: Path | None = None,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
         """Remove a marketplace by name or source."""
-        return (
+        logger.info("Removing marketplace", name_or_source=name_or_source, scope=scope.value if scope else "any")
+
+        result = (
             self._resolve_marketplace_name(name_or_source, working_dir)
             .and_then(self._load_marketplace_state)
             .and_then(self._attach_marketplace_info)
@@ -84,16 +99,22 @@ class Marketplace:
             .map(lambda data: data[1])
         )
 
+        if is_err(result):
+            error = result.unwrap_err()
+            logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=error.message)
+        else:
+            info = result.unwrap()
+            logger.success("Marketplace removed", name=info.name)
+
+        return result
+
     def list(
         self,
         *,
         working_dir: Path | None = None,
     ) -> Result[list[MarketplaceInfo], MarketplaceError]:
         """List all configured marketplaces."""
-        return (
-            self._get_all_marketplace_configs()
-            .map(self._build_marketplace_infos_from_configs)
-        )
+        return self._get_all_marketplace_configs().map(self._build_marketplace_infos_from_configs)
 
     def get(
         self,
@@ -102,29 +123,41 @@ class Marketplace:
         working_dir: Path | None = None,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
         """Get details for a specific marketplace."""
-        return (
-            self._load_marketplace_state(name)
-            .and_then(self._attach_marketplace_info)
-            .map(lambda data: data[1])
-        )
+        return self._load_marketplace_state(name).and_then(self._attach_marketplace_info).map(lambda data: data[1])
 
     def _fetch_marketplace_to_temp(
         self,
         source: MarketplaceSource,
     ) -> Result[tuple[MarketplaceSource, Path], MarketplaceError]:
         if isinstance(source, LocalMarketplaceSource):
+            logger.debug("Using local marketplace", path=str(source.path))
             return Ok((source, source.path))
 
-        # Create a unique temp directory path (git clone will create it)
+        logger.debug("Fetching marketplace", source=str(source))
         temp_base = Path(tempfile.gettempdir()) / f"nova-marketplace-{uuid.uuid4().hex}"
-        return fetch_marketplace(source, temp_base).map(lambda path: (source, path))
+        result = fetch_marketplace(source, temp_base)
+
+        if is_err(result):
+            logger.error("Failed to fetch marketplace", source=str(source), error=result.unwrap_err().message)
+
+        return result.map(lambda path: (source, path))
 
     def _validate_and_extract_manifest(
         self,
         data: tuple[MarketplaceSource, Path],
     ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
         source, marketplace_dir = data
-        return validate_marketplace(marketplace_dir).map(lambda manifest: (source, marketplace_dir, manifest.name))
+        logger.debug("Validating marketplace", path=str(marketplace_dir))
+
+        result = validate_marketplace(marketplace_dir)
+
+        if is_err(result):
+            logger.error("Marketplace validation failed", path=str(marketplace_dir), error=result.unwrap_err().message)
+        else:
+            manifest = result.unwrap()
+            logger.debug("Marketplace validated", name=manifest.name, bundles=len(manifest.bundles))
+
+        return result.map(lambda manifest: (source, marketplace_dir, manifest.name))
 
     def _check_for_duplicate(
         self,
@@ -137,6 +170,7 @@ class Marketplace:
             return has_marketplace_result
 
         if has_marketplace_result.unwrap():
+            logger.warning("Marketplace already exists", name=marketplace_name, source=str(source))
             return Err(
                 MarketplaceAlreadyExistsError(
                     name=marketplace_name,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from nova.common import create_logger
 from nova.utils.dicts import deep_merge
 
 from .models import (
@@ -14,6 +15,8 @@ from .models import (
     UserConfig,
 )
 
+logger = create_logger("config")
+
 
 def merge_configs(
     global_cfg: GlobalConfig | None,
@@ -21,6 +24,16 @@ def merge_configs(
     user_cfg: UserConfig | None,
 ) -> NovaConfig:
     """Merge configs with precedence: user > project > global."""
+    scopes_present = []
+    if global_cfg is not None:
+        scopes_present.append("global")
+    if project_cfg is not None:
+        scopes_present.append("project")
+    if user_cfg is not None:
+        scopes_present.append("user")
+
+    logger.debug("Merging configs", scopes=scopes_present)
+
     merged_data: dict[str, Any] = {}
 
     for scope in (global_cfg, project_cfg, user_cfg):
@@ -33,7 +46,9 @@ def merge_configs(
             list_merge_strategy=_config_list_merge,
         )
 
-    return NovaConfig.model_validate(merged_data)
+    result = NovaConfig.model_validate(merged_data)
+    logger.info("Config merged", scopes=scopes_present, config=result.model_dump(mode="json"))
+    return result
 
 
 def _strip_none_dict(data: dict[str, Any]) -> dict[str, Any]:

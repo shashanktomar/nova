@@ -19,5 +19,6 @@
 ## Code Style
 
 - **CRITICAL**: ALL imports at the top of the file - NEVER use inline imports inside functions
+- **CRITICAL**: NO COMMENTS AND UNNECESSARY DOCSTRINGS
 - **IMPORTANT**: Do NOT add docstrings to simple helper functions - only add docstrings to public API functions that need documentation
 - Keep code simple and readable - the code should be self-documenting

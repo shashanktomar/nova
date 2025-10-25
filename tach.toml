@@ -17,36 +17,38 @@ root_module = "allow"
 
 [[modules]]
 path = "nova.settings"
+depends_on = ["nova.common", "nova.utils", "nova.config"]
 
 [[modules]]
 path = "nova.constants"
 depends_on = []
 
 [[modules]]
-path = "nova.utils.logging"
-depends_on = [
-  { path = "nova.settings" }
-]
+path = "nova.common"
+depends_on = ["nova.constants", "nova.utils"]
+
+# [[modules]]
+# path = "nova.utils.logging"
+# depends_on = ["nova.common", "nova.constants"]
 
 [[modules]]
 path = "nova.utils"
-depends_on = [{ path = "nova.constants" }]
+depends_on = ["nova.constants"]
 
 [[modules]]
 path = "nova.datastore"
-depends_on = [{ path = "nova.utils" }]
+depends_on = ["nova.utils"]
 
 [[modules]]
 path = "nova.config"
-depends_on = [
-  { path = "nova.utils" },
-  { path = "nova.marketplace" },
-  { path = "nova.constants" }
-]
 
 [[modules]]
 path = "nova.marketplace"
-depends_on = [{ path = "nova.utils" }, { path = "nova.datastore" }]
+depends_on = ["nova.utils", "nova.datastore", "nova.common"]
 
 [[modules]]
 path = "nova.cli"
+
+[[modules]]
+path = "<root>"
+depends_on = ["nova.common"]

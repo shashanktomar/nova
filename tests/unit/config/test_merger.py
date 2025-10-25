@@ -45,7 +45,9 @@ def test_merge_none_configs_returns_empty() -> None:
     result = merge_configs(None, None, None)
 
     assert isinstance(result, NovaConfig)
-    assert result.model_dump() == {"marketplaces": []}
+    assert result.marketplaces == []
+    assert result.logging.enabled is True
+    assert result.logging.log_level == "INFO"
 
 
 def test_merge_ignores_none_values() -> None:

@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
+from nova.common import create_logger
 from nova.marketplace import MarketplaceConfig, MarketplaceScope
 from nova.marketplace.models import (
     MarketplaceConfigLoadError,
@@ -37,23 +38,39 @@ from ..resolver import apply_env_overrides
 from .paths import ResolvedConfigPaths, discover_config_paths
 from .settings import ConfigStoreSettings
 
+logger = create_logger("config")
+
 ScopeModel = GlobalConfig | ProjectConfig | UserConfig
 ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
 
 
 class FileConfigStore(ConfigStore):
-    def __init__(self, working_dir: Path | None, settings: ConfigStoreSettings) -> None:
+    def __init__(self, settings: ConfigStoreSettings, working_dir: Path | None = None) -> None:
         self.working_dir = working_dir or Path.cwd()
         self.settings = settings
 
     def load(self) -> Result[NovaConfig, ConfigError]:
+        logger.debug("Loading config", working_dir=str(self.working_dir))
         paths = discover_config_paths(self.working_dir, self.settings)
 
-        return (
+        logger.debug(
+            "Config paths discovered",
+            global_path=str(paths.global_path) if paths.global_path else None,
+            project_path=str(paths.project_path) if paths.project_path else None,
+            user_path=str(paths.user_path) if paths.user_path else None,
+        )
+
+        result = (
             self._load_all_scopes(paths)
             .map(lambda configs: merge_configs(configs[0], configs[1], configs[2]))
             .map(apply_env_overrides)
         )
+
+        if is_err(result):
+            error = result.unwrap_err()
+            logger.error("Config load failed", scope=error.scope.value, error=error.message)
+
+        return result
 
     def load_scope(self, scope: ConfigScope) -> Result[NovaConfig | None, ConfigError]:
         paths = discover_config_paths(self.working_dir, self.settings)
@@ -317,7 +334,10 @@ class FileConfigStore(ConfigStore):
         scope: ConfigScope,
     ) -> Result[ScopeModel, ConfigError]:
         """Load and validate config from YAML file."""
+        logger.debug("Loading config file", scope=scope.value, path=str(path))
+
         if not path.exists() or not path.is_file():
+            logger.warning("Config file not found", scope=scope.value, path=str(path))
             return Err(
                 ConfigNotFoundError(
                     scope=scope,
@@ -329,6 +349,7 @@ class FileConfigStore(ConfigStore):
         try:
             raw_text = path.read_text(encoding="utf-8")
         except OSError as exc:
+            logger.error("Config file read error", scope=scope.value, path=str(path), error=str(exc))
             return Err(
                 ConfigIOError(
                     scope=scope,
@@ -343,6 +364,14 @@ class FileConfigStore(ConfigStore):
             mark = getattr(exc, "problem_mark", None)
             line = getattr(mark, "line", None)
             column = getattr(mark, "column", None)
+            logger.error(
+                "Config YAML parse error",
+                scope=scope.value,
+                path=str(path),
+                line=line,
+                column=column,
+                error=str(exc),
+            )
             return Err(
                 ConfigYamlError(
                     scope=scope,
@@ -357,6 +386,7 @@ class FileConfigStore(ConfigStore):
             data = {}
 
         if not isinstance(data, dict):
+            logger.error("Config must be a mapping", scope=scope.value, path=str(path))
             return Err(
                 ConfigValidationError(
                     scope=scope,
@@ -368,6 +398,7 @@ class FileConfigStore(ConfigStore):
 
         try:
             model = model_cls.model_validate(data)
+            logger.debug("Config validated", scope=scope.value, path=str(path))
         except ValidationError as exc:
             error_details = exc.errors()
             field = None
@@ -377,6 +408,7 @@ class FileConfigStore(ConfigStore):
                 loc = first.get("loc") or ()
                 field = ".".join(str(part) for part in loc) or None
                 message = first.get("msg", message)
+            logger.error("Config validation error", scope=scope.value, path=str(path), field=field, error=message)
             return Err(
                 ConfigValidationError(
                     scope=scope,

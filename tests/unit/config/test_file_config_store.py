@@ -197,7 +197,10 @@ def test_file_config_store_returns_defaults_when_no_files_exist(tmp_path: Path, 
     result = store.load()
 
     assert is_ok(result)
-    assert result.unwrap().model_dump() == {"marketplaces": []}
+    config = result.unwrap()
+    assert config.marketplaces == []
+    assert config.logging.enabled is True
+    assert config.logging.log_level == "INFO"
 
 
 def test_file_config_store_returns_error_on_invalid_yaml(tmp_path: Path, monkeypatch) -> None:
