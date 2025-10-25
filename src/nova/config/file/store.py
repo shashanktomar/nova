@@ -59,17 +59,12 @@ class FileConfigStore(ConfigStore):
             user_path=str(paths.user_path) if paths.user_path else None,
         )
 
-        result = (
+        return (
             self._load_all_scopes(paths)
             .map(lambda configs: merge_configs(configs[0], configs[1], configs[2]))
             .map(apply_env_overrides)
+            .inspect_err(lambda error: logger.error("Config load failed", scope=error.scope.value, error=error.message))
         )
-
-        if is_err(result):
-            error = result.unwrap_err()
-            logger.error("Config load failed", scope=error.scope.value, error=error.message)
-
-        return result
 
     def load_scope(self, scope: ConfigScope) -> Result[NovaConfig | None, ConfigError]:
         paths = discover_config_paths(self.working_dir, self.settings)

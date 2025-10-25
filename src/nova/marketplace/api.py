@@ -24,6 +24,7 @@ from .models import (
     MarketplaceAlreadyExistsError,
     MarketplaceError,
     MarketplaceInfo,
+    MarketplaceManifest,
     MarketplaceNotFoundError,
     MarketplaceScope,
     MarketplaceSource,
@@ -69,7 +70,9 @@ class Marketplace:
         logger.info("Adding marketplace", source=source, scope=scope.value)
         save_to_config = partial(self._save_to_config, scope=scope)
 
-        result = (
+        log_add_error = partial(self._log_add_error, source)
+
+        return (
             parse_source(source, working_dir=working_dir)
             .and_then(self._fetch_marketplace_to_temp)
             .and_then(self._validate_and_extract_manifest)
@@ -78,16 +81,9 @@ class Marketplace:
             .and_then(self._save_marketplace_state)
             .and_then(save_to_config)
             .map(self._build_marketplace_info)
+            .inspect(self._log_add_success)
+            .inspect_err(log_add_error)
         )
-
-        if is_err(result):
-            error = result.unwrap_err()
-            logger.error("Failed to add marketplace", source=source, error=error.message)
-        else:
-            info = result.unwrap()
-            logger.success("Marketplace added", name=info.name, bundles=info.bundle_count)
-
-        return result
 
     def remove(
         self,
@@ -100,24 +96,18 @@ class Marketplace:
         logger.info("Removing marketplace", name_or_source=name_or_source, scope=scope.value if scope else "any")
 
         remove_from_scope = partial(self._remove_from_config, scope=scope)
+        log_remove_error = partial(self._log_remove_error, name_or_source)
 
-        result = (
+        return (
             self._resolve_marketplace_name(name_or_source, working_dir)
             .and_then(remove_from_scope)
             .and_then(self._load_state_and_info)
             .and_then(self._delete_state_if_present)
             .and_then(self._cleanup_directory_if_present)
             .map(self._finalize_info)
+            .inspect(self._log_remove_success)
+            .inspect_err(log_remove_error)
         )
-
-        if is_err(result):
-            error = result.unwrap_err()
-            logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=error.message)
-        else:
-            info = result.unwrap()
-            logger.success("Marketplace removed", name=info.name)
-
-        return result
 
     def list(
         self,
@@ -146,12 +136,13 @@ class Marketplace:
 
         logger.debug("Fetching marketplace", source=str(source))
         temp_base = Path(tempfile.gettempdir()) / f"nova-marketplace-{uuid.uuid4().hex}"
-        result = fetch_marketplace(source, temp_base)
+        log_fetch_error = partial(self._log_fetch_error, source)
 
-        if is_err(result):
-            logger.error("Failed to fetch marketplace", source=str(source), error=result.unwrap_err().message)
-
-        return result.map(lambda path: (source, path))
+        return (
+            fetch_marketplace(source, temp_base)
+            .inspect_err(log_fetch_error)
+            .map(lambda path: (source, path))
+        )
 
     def _validate_and_extract_manifest(
         self,
@@ -159,16 +150,14 @@ class Marketplace:
     ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
         source, marketplace_dir = data
         logger.debug("Validating marketplace", path=str(marketplace_dir))
+        log_validation_error = partial(self._log_validation_error, marketplace_dir)
 
-        result = validate_marketplace(marketplace_dir)
-
-        if is_err(result):
-            logger.error("Marketplace validation failed", path=str(marketplace_dir), error=result.unwrap_err().message)
-        else:
-            manifest = result.unwrap()
-            logger.debug("Marketplace validated", name=manifest.name, bundles=len(manifest.bundles))
-
-        return result.map(lambda manifest: (source, marketplace_dir, manifest.name))
+        return (
+            validate_marketplace(marketplace_dir)
+            .inspect(self._log_validation_success)
+            .inspect_err(log_validation_error)
+            .map(lambda manifest: (source, marketplace_dir, manifest.name))
+        )
 
     def _check_for_duplicate(
         self,
@@ -468,3 +457,24 @@ class Marketplace:
             infos.append(info)
 
         return infos
+
+    def _log_add_success(self, info: MarketplaceInfo) -> None:
+        logger.success("Marketplace added", name=info.name, bundles=info.bundle_count)
+
+    def _log_add_error(self, source: str, error: MarketplaceError) -> None:
+        logger.error("Failed to add marketplace", source=source, error=error.message)
+
+    def _log_remove_success(self, info: MarketplaceInfo) -> None:
+        logger.success("Marketplace removed", name=info.name)
+
+    def _log_remove_error(self, name_or_source: str, error: MarketplaceError) -> None:
+        logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=error.message)
+
+    def _log_fetch_error(self, source: MarketplaceSource, error: MarketplaceError) -> None:
+        logger.error("Failed to fetch marketplace", source=str(source), error=error.message)
+
+    def _log_validation_success(self, manifest: MarketplaceManifest) -> None:
+        logger.debug("Marketplace validated", name=manifest.name, bundles=len(manifest.bundles))
+
+    def _log_validation_error(self, marketplace_dir: Path, error: MarketplaceError) -> None:
+        logger.error("Marketplace validation failed", path=str(marketplace_dir), error=error.message)
