@@ -35,47 +35,35 @@ print_cli_start "nova config show"
 uv run nova config show
 print_cli_end
 
-print_test "3" "Verify marketplace in global config file"
-print_info "Reading config file: $XDG_CONFIG_HOME/nova/config.yaml"
-print_separator
-cat "$XDG_CONFIG_HOME/nova/config.yaml"
-print_separator
-
-print_test "4" "Add marketplace from GitHub"
+print_test "3" "Add marketplace from GitHub"
 print_cli_start "nova marketplace add shashanktomar/nova-marketplace-example --scope global"
 uv run nova marketplace add shashanktomar/nova-marketplace-example --scope global
 print_cli_end
 
-print_test "5" "Show config with multiple marketplaces"
+print_test "4" "Show config with multiple marketplaces"
 print_cli_start "nova config show"
 uv run nova config show
 print_cli_end
 
-print_test "6" "Verify marketplace state in datastore"
-print_info "Reading datastore: $XDG_DATA_HOME/nova/marketplaces/data.json"
-print_separator
-cat "$XDG_DATA_HOME/nova/marketplaces/data.json"
-print_separator
-
-print_test "7" "Duplicate marketplace (should fail)"
+print_test "5" "Duplicate marketplace (should fail)"
 print_info "Expecting error: marketplace already exists"
 print_cli_start "nova marketplace add <fixtures>/valid-basic --scope global"
 uv run nova marketplace add "$FIXTURES_DIR/valid-basic" --scope global || print_expected_failure "Failed as expected"
 print_cli_end
 
-print_test "8" "Missing manifest (should fail)"
+print_test "6" "Missing manifest (should fail)"
 print_info "Expecting error: marketplace.json not found"
 print_cli_start "nova marketplace add <fixtures>/invalid-no-manifest"
 uv run nova marketplace add "$FIXTURES_DIR/invalid-no-manifest" || print_expected_failure "Failed as expected"
 print_cli_end
 
-print_test "9" "Invalid JSON (should fail)"
+print_test "7" "Invalid JSON (should fail)"
 print_info "Expecting error: invalid JSON syntax"
 print_cli_start "nova marketplace add <fixtures>/invalid-bad-json"
 uv run nova marketplace add "$FIXTURES_DIR/invalid-bad-json" || print_expected_failure "Failed as expected"
 print_cli_end
 
-print_test "10" "Missing required fields (should fail)"
+print_test "8" "Missing required fields (should fail)"
 print_info "Expecting error: missing 'owner' field"
 print_cli_start "nova marketplace add <fixtures>/invalid-missing-fields"
 uv run nova marketplace add "$FIXTURES_DIR/invalid-missing-fields" || print_expected_failure "Failed as expected"

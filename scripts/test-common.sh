@@ -57,13 +57,13 @@ print_separator() {
 # Indicate CLI command is starting
 print_cli_start() {
     local command="$1"
-    echo -e "${COLOR_YELLOW}[CLI]${COLOR_RESET} ${COLOR_DIM}Running: $command${COLOR_RESET}"
-    print_separator "${COLOR_YELLOW}"
+    echo -e "${COLOR_DIM}Running: $command${COLOR_RESET}"
+    print_separator
 }
 
 # Indicate CLI output has ended
 print_cli_end() {
-    print_separator "${COLOR_YELLOW}"
+    print_separator
 }
 
 # Print a key-value pair
