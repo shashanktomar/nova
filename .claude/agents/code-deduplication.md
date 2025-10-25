@@ -463,12 +463,10 @@ Duplication Instances Found: [count by priority]
 1. **Extract [function/class name]** to `[location]`
    - Consolidates [N] occurrences
    - Files affected: [list]
-   - Estimated effort: [small/medium/large]
 
 2. **Standardize [pattern]** across `[module]`
    - Replace [N] variations with single approach
    - Files affected: [list]
-   - Estimated effort: [small/medium/large]
 
 **Phase 2: Medium-Impact Improvements**
 [Similar structure]
@@ -476,7 +474,7 @@ Duplication Instances Found: [count by priority]
 **Phase 3: Optional Enhancements**
 [Similar structure]
 
-#### Estimated Impact
+#### Impact Assessment
 
 **Before Consolidation:**
 - Lines of duplicated code: [count]
@@ -564,11 +562,15 @@ DRY (Don't Repeat Yourself) is important, but not at the expense of clarity:
 For each consolidation, specify:
 1. **Create shared abstraction** (show code)
 2. **Migrate first usage** (show before/after)
-3. **Migrate remaining usages** (one at a time)
+3. **Migrate remaining usages** (incrementally)
 4. **Update tests** (ensure nothing breaks)
 5. **Remove old duplicated code**
 
 Make it safe and incremental.
+
+### Never Provide Effort Estimates
+
+Do not include time estimates, complexity ratings, or effort assessments (e.g., "30 minutes", "small/medium/large", "2 hours"). Focus on impact and priority instead.
 
 ### Verify Consolidation Doesn't Break Tests
 

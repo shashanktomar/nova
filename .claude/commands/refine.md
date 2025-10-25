@@ -201,6 +201,7 @@ Wait for their response and proceed accordingly.
 - **Summarize key points** - Provide concise high-level takeaways
 - **Consolidated view** - For "all", combine findings from all agents
 - **Actionable next steps** - Always offer clear options for what to do next
+- **Never provide effort estimates** - Do not include time estimates, effort assessments, or complexity ratings
 
 ### Error Handling
 
