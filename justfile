@@ -23,8 +23,24 @@ sync:
 ###############################################
 
 # Run the nova cli command
+[group('cli')]
 nova *args:
     uv run nova {{args}}
+
+###############################################
+################## Test Runbooks ##############
+###############################################
+
+# Run manual marketplace CLI tests
+[group('test-runbooks')]
+test-marketplace-runbook:
+    ./scripts/test-marketplace-cli.sh
+
+# aliases
+
+alias t := test
+alias te := test-e2e
+alias tu := test-unit
 
 ###############################################
 ############# Testing and Linting #############
@@ -32,19 +48,20 @@ nova *args:
 
 # Run tests
 [group('test and lint')]
-test:
-    uv run pytest
-
-# Run e2e tests
-[group('test and lint')]
 test-e2e:
-    # uv run pytest -m e2e --capture=no
-    uv run pytest -m e2e -v
+    uv run pytest -m e2e
 
-# Run only unit tests
 [group('test and lint')]
 test-unit:
     uv run pytest -m "not e2e"
+
+[group('test and lint')]
+test: test-unit test-e2e
+
+# Run tests with coverage report
+[group('test and lint')]
+test-cov:
+    uv run pytest --cov=src/nova --cov-report=term-missing --cov-report=html
 
 # Format code
 [group('test and lint')]
@@ -66,14 +83,24 @@ check-types:
 lockfile-check:
   uv lock --check
 
+# Run dependency graph check
+[group('test and lint')]
+check-dependency-graph:
+  uv run tach check
+
+# Check the external imports in your Python packages match your declared package dependencies
+[group('test and lint')]
+check-external-imports:
+  uv run tach check-external
+
 # Run all code quality checks
 [group('test and lint')]
-lint-all: lockfile-check lint check-types
+lint-all: lockfile-check lint check-types check-dependency-graph check-external-imports
     @echo "All lint checks passed! 🎉"
 
 # Run test and all code quality checks
 [group('test and lint')]
-check: lint-all test-unit
+check: lint-all test
 
 ###############################################
 ############### Utilities #####################

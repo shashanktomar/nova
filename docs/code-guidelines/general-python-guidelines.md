@@ -2,87 +2,7 @@
 
 These are guidelines for LLMs when writing Python code in this codebase.
 
-## Import Conventions
-
-### **CRITICAL: All imports must be at the top of the file**
-
-**Never use inline imports inside functions, methods, or any code blocks.**
-
-```python
-# WRONG - Never do this
-def some_function():
-    from modules.patients.domain.models import Patient  # BAD!
-    from datetime import date  # BAD!
-    # ... rest of function
-
-# CORRECT - All imports at the top
-from datetime import date
-from modules.patients.domain.models import Patient
-
-def some_function():
-    # ... function code
-```
-
-**Why this is critical:**
-
-- Makes dependencies explicit and visible
-- Improves code readability and maintainability
-- Prevents import cycles and circular dependency issues
-- Enables better IDE support and static analysis
-- Follows Python PEP 8 standards
-- Makes testing and mocking easier
-
-**The only acceptable exceptions are:**
-
-- Avoiding circular imports (but should be fixed architecturally)
-- Conditional imports for optional dependencies
-- Dynamic imports for plugins (very rare)
-
-### Module Imports
-
-When importing from modules, always use the public API exposed through the `__init__.py` file:
-
-```python
-# Good - importing from the module's public API
-from modules.instrument_registry import Instrument
-from modules.core.models import Id, NonEmptyString
-
-# Bad - importing directly from internal files
-from modules.instrument_registry.models.instrument import Instrument
-from modules.core.models.aliases import Id
-```
-
-### Relative Imports Within Modules
-
-When importing from the same module, use relative imports with the `.module` convention:
-
-```python
-# Inside src/modules/instrument_registry/services/registry.py
-from ..models import Instrument  # Good - relative import from same module
-from .utils import validate_symbol  # Good - from sibling file
-
-# Bad - absolute import within same module
-from modules.instrument_registry.models import Instrument
-```
-
-### Exposing Public APIs
-
-Any new public code in a module must be exposed through the module's `__init__.py` file:
-
-```python
-# modules/instrument_registry/models/__init__.py
-from .instrument import Instrument, InstrumentType
-from .exchange import Exchange
-
-__all__ = ["Instrument", "InstrumentType", "Exchange"]
-```
-
-This ensures:
-
-- Clear module boundaries
-- Controlled public APIs
-- Easier refactoring of internal structure
-- Better IDE support and autocomplete
+**Note:** For import conventions, see [Python Import Conventions](./python-import-conventions.md).
 
 ## Modern Python Features
 
@@ -129,6 +49,47 @@ class RepositoryProtocol(Protocol):
     def save(self, entity: Entity) -> None:
         ...
 ```
+
+### Pattern Matching with `match` Statements
+
+Use `match` statements (Python 3.10+) instead of `if-elif-else` chains when dispatching on enums or discriminated types:
+
+```python
+# Good - using match for enum dispatch
+match scope:
+    case ConfigScope.GLOBAL:
+        global_cfg = value
+    case ConfigScope.PROJECT:
+        project_cfg = value
+    case ConfigScope.USER:
+        user_cfg = value
+
+# Bad - if-elif-else chain
+if scope is ConfigScope.GLOBAL:
+    global_cfg = value
+elif scope is ConfigScope.PROJECT:
+    project_cfg = value
+else:
+    user_cfg = value
+```
+
+**Benefits:**
+- More explicit and readable
+- Exhaustiveness checking (easier to see all cases are handled)
+- Consistent with functional programming style
+- Better tooling support for pattern matching
+
+**When to use `match`:**
+- Dispatching on enum values
+- Handling discriminated union types
+- Processing structured data with different shapes
+- Multiple conditional branches based on value patterns
+
+**When to use `if-elif-else`:**
+- Simple boolean conditions
+- Range checks or complex predicates
+- Two or fewer branches
+- Conditions that aren't value-based patterns
 
 ## Design Principles
 

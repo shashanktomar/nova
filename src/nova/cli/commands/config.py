@@ -7,7 +7,8 @@ from typing import Annotated, Literal
 import typer
 import yaml
 
-from nova.config import ConfigError, parse_config
+from nova.config import ConfigError, FileConfigStore
+from nova.settings import settings
 from nova.utils.functools.models import is_err
 
 FormatOption = Annotated[
@@ -38,15 +39,18 @@ def show(
     format: FormatOption = "yaml",
     working_dir: WorkingDirOption = None,
 ) -> None:
-    """Show effective configuration after merging all scopes."""
     selected_format = format.lower()
-    result = parse_config(working_dir=working_dir)
+    store = FileConfigStore(
+        working_dir=working_dir,
+        settings=settings.to_config_store_settings(),
+    )
+    result = store.load()
     if is_err(result):
         _handle_error(result.err())
         raise typer.Exit(code=1)
 
     config = result.unwrap()
-    payload = config.model_dump()
+    payload = config.model_dump(mode="json")
     typer.echo(_format_payload(payload, selected_format))
 
 

@@ -1,16 +1,16 @@
 ---
 status: completed
 priority: p0
-updated: "2025-10-21"
+updated: "2025-10-23"
 implemented: "2025-10-21"
-review_status: "reviewed"
+review_status: "implemented"
 ---
 
 # Feature 1: Configuration Management - Technical Specification
 
 **Status:** ✅ Completed
 **Priority:** P0 (Must Have)
-**Last Updated:** 2025-10-21
+**Last Updated:** 2025-10-23 (Updated with ConfigStore protocol)
 
 ## Overview
 
@@ -33,15 +33,16 @@ This specification defines the technical implementation for Nova's configuration
 
 ## Public API Contract
 
-The `nova.config` module exports an ultra-minimal public API with a single function. All other modules must use this API - no internal modules should be imported directly.
+The `nova.config` module provides a protocol-based API that abstracts configuration storage. The primary abstraction is the `ConfigStore` protocol, with `FileConfigStore` as the file-based implementation.
 
 ### Design Philosophy
 
-- **Single responsibility**: One function does one thing - parse and validate merged config
-- **No caching**: Reads from disk every time for simplicity and freshness
+- **Protocol-based abstraction**: Configuration storage is abstracted behind `ConfigStore` protocol
+- **Implementation flexibility**: Users can implement custom stores (database, remote, in-memory)
+- **No caching**: FileConfigStore reads from disk every time for simplicity and freshness
 - **Validation is automatic**: No separate validation API needed
 - **Errors contain context**: All errors include scope information for debugging
-- **Direct file inspection**: Users can view individual scope files directly in their editor
+- **Dependency injection**: Feature modules accept `ConfigStore` instances
 
 ### Module Exports
 
@@ -56,7 +57,8 @@ __all__ = [
     "ConfigYamlError",
     "ConfigValidationError",
     "ConfigIOError",
-    "parse_config",
+    "ConfigStore",        # Protocol
+    "FileConfigStore",    # Implementation
 ]
 ```
 
@@ -166,64 +168,117 @@ class NovaConfig(BaseModel):
     pass
 ```
 
-### Public API Function
+### ConfigStore Protocol
 
-The entire public API consists of a single function:
+The core abstraction for configuration storage and retrieval:
 
 ```python
-def parse_config(
-    *,
-    working_dir: Path | None = None
-) -> Result[NovaConfig, ConfigError]:
-    """Parse and validate effective configuration (merged from all scopes + env vars).
+from typing import Protocol
+from nova.utils.functools.models import Result
 
-    This function:
-    1. Discovers config files in all scopes (global, project, user)
-    2. Loads and parses YAML from each scope
-    3. Validates each scope against schema
-    4. Merges configs with precedence: env > user > project > global
-    5. Applies environment variable overrides
-    6. Returns the final validated configuration
+class ConfigStore(Protocol):
+    """Protocol for configuration storage and retrieval."""
 
-    Reads from disk on every call - no caching for simplicity and freshness.
+    def load(self) -> Result[NovaConfig, ConfigError]:
+        """Load merged configuration."""
+        ...
+```
 
-    Args:
-        working_dir: Directory to start searching for project config.
-                    Defaults to current working directory (Path.cwd()).
-                    Used to find .nova/config.yaml by walking up the tree.
+### FileConfigStore Implementation
 
-    Returns:
-        Result[NovaConfig, ConfigError]:
-            - Ok(config): Successfully loaded and validated configuration
-            - Err(ConfigNotFoundError): Explicitly requested config scope missing (rare)
-            - Err(ConfigYamlError): YAML syntax error (includes scope, line, column)
-            - Err(ConfigValidationError): Schema validation failed (includes scope, field)
-            - Err(ConfigIOError): File system error reading config
+File-based implementation of the ConfigStore protocol:
 
-    Error Context:
-        All errors include the `scope` field indicating which config file failed
-        (global, project, or user), enabling users to locate and fix the issue.
+```python
+class FileConfigStore:
+    """File-based configuration store using YAML files.
 
-    Example:
-        # Normal usage (current directory)
-        result = parse_config()
-        if result.is_ok():
-            config = result.ok()
-            # Use config fields as defined by NovaConfig model
-        else:
-            error = result.err()
-            print(f"Config error in {error.scope}: {error.message}")
-
-        # Explicit working directory (useful for testing)
-        result = parse_config(working_dir=Path("/path/to/project"))
-
-    Note:
-        If no configuration files are discovered, the function still returns `Ok`
-        with an empty `NovaConfig` using default values. Users can inspect individual
-        scope files directly by opening them in their editor. Programmatic scope
-        inspection is not needed.
+    Implements the ConfigStore protocol for file-based configuration.
     """
-    ...
+
+    def __init__(self, working_dir: Path | None = None) -> None:
+        """Initialize file config store.
+
+        Args:
+            working_dir: Directory to start searching for project config.
+                        Defaults to current working directory (Path.cwd()).
+                        Used to find .nova/config.yaml by walking up the tree.
+        """
+        ...
+
+    def load(self) -> Result[NovaConfig, ConfigError]:
+        """Load and validate effective configuration from YAML files.
+
+        This method:
+        1. Discovers config files in all scopes (global, project, user)
+        2. Loads and parses YAML from each scope
+        3. Validates each scope against schema
+        4. Merges configs with precedence: env > user > project > global
+        5. Applies environment variable overrides
+        6. Returns the final validated configuration
+
+        Reads from disk on every call - no caching for simplicity and freshness.
+
+        Returns:
+            Result[NovaConfig, ConfigError]:
+                - Ok(config): Successfully loaded and validated configuration
+                - Err(ConfigNotFoundError): Explicitly requested config scope missing (rare)
+                - Err(ConfigYamlError): YAML syntax error (includes scope, line, column)
+                - Err(ConfigValidationError): Schema validation failed (includes scope, field)
+                - Err(ConfigIOError): File system error reading config
+
+        Error Context:
+            All errors include the `scope` field indicating which config file failed
+            (global, project, or user), enabling users to locate and fix the issue.
+
+        Example:
+            # Normal usage (current directory)
+            store = FileConfigStore()
+            result = store.load()
+            if result.is_ok():
+                config = result.ok()
+                # Use config fields as defined by NovaConfig model
+            else:
+                error = result.err()
+                print(f"Config error in {error.scope}: {error.message}")
+
+            # Explicit working directory (useful for testing)
+            store = FileConfigStore(working_dir=Path("/path/to/project"))
+            result = store.load()
+
+        Note:
+            If no configuration files are discovered, the method still returns `Ok`
+            with an empty `NovaConfig` using default values.
+        """
+        ...
+```
+
+### Usage Examples
+
+**CLI Usage (File-based):**
+```python
+from nova.config import FileConfigStore
+
+store = FileConfigStore()
+result = store.load()
+```
+
+**Library Usage (Custom Store):**
+```python
+from nova.config import ConfigStore, NovaConfig, ConfigError
+from nova.utils.functools.models import Result, Ok
+
+class DatabaseConfigStore:
+    """Custom config store backed by database."""
+
+    def load(self) -> Result[NovaConfig, ConfigError]:
+        # Load config from database
+        data = database.query("SELECT * FROM config")
+        config = NovaConfig.model_validate(data)
+        return Ok(config)
+
+# Use custom store
+store = DatabaseConfigStore()
+result = store.load()
 ```
 
 ## CLI Commands
@@ -302,15 +357,28 @@ section_c:
 
 ```
 nova/config/
-├── __init__.py          # Public API: parse_config()
-├── models.py            # All Pydantic models
-├── paths.py             # Config file discovery
-├── loader.py            # YAML parsing and validation
+├── __init__.py          # Public API: ConfigStore, FileConfigStore
+├── protocol.py          # ConfigStore protocol definition
+├── models.py            # All Pydantic models and error types
 ├── merger.py            # Config merging with precedence
-└── resolver.py          # Environment variable resolution
+├── resolver.py          # Environment variable resolution
+└── file/                # File-based implementation
+    ├── __init__.py      # Exports FileConfigStore
+    ├── store.py         # FileConfigStore implementation
+    └── paths.py         # Config file path discovery
 ```
 
 ### Module APIs
+
+#### `protocol.py`
+
+```python
+class ConfigStore(Protocol):
+    """Protocol for configuration storage and retrieval."""
+
+    def load(self) -> Result[NovaConfig, ConfigError]:
+        """Load merged configuration."""
+```
 
 #### `models.py`
 
@@ -326,9 +394,35 @@ class UserConfig(BaseModel):
 
 class NovaConfig(BaseModel):
     """Effective merged configuration"""
+
+# Error models
+class ConfigNotFoundError(BaseModel): ...
+class ConfigYamlError(BaseModel): ...
+class ConfigValidationError(BaseModel): ...
+class ConfigIOError(BaseModel): ...
 ```
 
-#### `paths.py`
+#### `file/store.py`
+
+```python
+class FileConfigStore:
+    """File-based configuration store using YAML files."""
+
+    def __init__(self, working_dir: Path | None = None) -> None:
+        """Initialize with optional working directory."""
+
+    def load(self) -> Result[NovaConfig, ConfigError]:
+        """Load merged configuration from YAML files."""
+
+    # Private methods
+    def _load_optional(...) -> Result[T | None, ConfigError]:
+        """Load optional config scope."""
+
+    def _load_scope_config(...) -> Result[T, ConfigError]:
+        """Load and validate a single scope's config."""
+```
+
+#### `file/paths.py`
 
 ```python
 @dataclass
@@ -339,19 +433,6 @@ class ConfigPaths:
 
 def discover_config_paths(working_dir: Path | None = None) -> ConfigPaths:
     """Discover all configuration file paths from working directory."""
-```
-
-#### `loader.py`
-
-```python
-def load_global_config(path: Path) -> Result[GlobalConfig, ConfigError]:
-    """Load and validate global config from YAML file."""
-
-def load_project_config(path: Path) -> Result[ProjectConfig, ConfigError]:
-    """Load and validate project config from YAML file."""
-
-def load_user_config(path: Path) -> Result[UserConfig, ConfigError]:
-    """Load and validate user config from YAML file."""
 ```
 
 #### `merger.py`
@@ -375,18 +456,28 @@ def apply_env_overrides(config: NovaConfig) -> NovaConfig:
 #### `__init__.py`
 
 ```python
-def parse_config(*, working_dir: Path | None = None) -> Result[NovaConfig, ConfigError]:
-    """Parse and validate effective configuration from all scopes."""
+# Public exports
+__all__ = [
+    "ConfigStore",
+    "FileConfigStore",
+    "NovaConfig",
+    "ConfigError",
+    ...
+]
+
+from .protocol import ConfigStore
+from .file import FileConfigStore
+from .models import NovaConfig, ConfigError, ...
 ```
 
 ### Data Flow
 
 ```
-parse_config()
+FileConfigStore.load()
   ↓
 discover_config_paths()
   ↓
-load_global_config(), load_project_config(), load_user_config()
+_load_scope_config() for each scope (global, project, user)
   ↓
 merge_configs()
   ↓
@@ -397,16 +488,20 @@ Result[NovaConfig, ConfigError]
 
 ## Implementation Checklist
 
-- [ ] Define complete NovaConfig schema
-- [ ] Implement path discovery
-- [ ] Implement YAML loading
-- [ ] Implement configuration merging
-- [ ] Implement environment variable resolution
-- [ ] Implement validation
-- [ ] Implement caching/singleton (Not implemented - intentionally always reloads config)
-- [ ] Write comprehensive tests
-- [ ] Update CLI commands to use new API
-- [ ] Document usage patterns
+- [x] Define ConfigStore protocol
+- [x] Define NovaConfig schema (with marketplace support)
+- [x] Implement FileConfigStore
+- [x] Implement path discovery
+- [x] Implement YAML loading (within FileConfigStore)
+- [x] Implement configuration merging
+- [x] Implement environment variable resolution
+- [x] Implement validation
+- [x] Write comprehensive tests (85 tests passing)
+- [x] Update CLI commands to use FileConfigStore
+- [x] Document usage patterns
+- [x] Update ADR-002 with ConfigStore protocol
+- [ ] Add examples for custom ConfigStore implementations
+- [ ] Potential enhancement: allow `merge_configs` to accept per-key merge rules so domain modules can declare behaviors like keyed list merges (e.g., `MergeRule(identifier="name")`) without hard-coding marketplace logic in the merger
 
 ## References
 

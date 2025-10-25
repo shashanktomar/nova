@@ -7,6 +7,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
+from nova.marketplace.config import MarketplaceConfig
+
 
 class ConfigScope(str, Enum):
     """Configuration scope levels."""
@@ -60,12 +62,7 @@ class ConfigIOError(BaseModel):
     message: str
 
 
-type ConfigError = (
-    ConfigNotFoundError
-    | ConfigYamlError
-    | ConfigValidationError
-    | ConfigIOError
-)
+type ConfigError = ConfigNotFoundError | ConfigYamlError | ConfigValidationError | ConfigIOError
 
 
 class GlobalConfig(BaseModel):
@@ -73,11 +70,15 @@ class GlobalConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    marketplaces: list[MarketplaceConfig] = []
+
 
 class ProjectConfig(BaseModel):
     """Project configuration (.nova/config.yaml)."""
 
     model_config = ConfigDict(extra="allow")
+
+    marketplaces: list[MarketplaceConfig] = []
 
 
 class UserConfig(BaseModel):
@@ -90,3 +91,5 @@ class NovaConfig(BaseModel):
     """Effective configuration (merged result)."""
 
     model_config = ConfigDict(extra="allow")
+
+    marketplaces: list[MarketplaceConfig] = []

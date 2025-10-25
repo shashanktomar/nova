@@ -6,17 +6,16 @@ import os
 
 import yaml
 
+from nova.constants import ENV_PREFIX
+from nova.utils.dicts import deep_merge
+from nova.utils.types import JsonDict
+
 from .models import NovaConfig
-
-ENV_PREFIX = "NOVA_CONFIG__"
-
-
-JSONDict = dict[str, object]
 
 
 def apply_env_overrides(config: NovaConfig) -> NovaConfig:
     """Apply environment variable overrides to config."""
-    override_data: JSONDict = {}
+    override_data: JsonDict = {}
 
     for key, value in os.environ.items():
         if not key.startswith(ENV_PREFIX):
@@ -25,18 +24,16 @@ def apply_env_overrides(config: NovaConfig) -> NovaConfig:
         if not path:
             continue
         segments = [segment.lower() for segment in path.split("__") if segment]
-        if not segments:
-            continue
         _insert_override(override_data, segments, _parse_env_value(value))
 
     if not override_data:
         return config
 
-    merged = _deep_merge(dict(config.model_dump()), override_data)
+    merged = deep_merge(dict(config.model_dump()), override_data)
     return NovaConfig.model_validate(merged)
 
 
-def _insert_override(data: JSONDict, path: list[str], value: object) -> None:
+def _insert_override(data: JsonDict, path: list[str], value: object) -> None:
     cursor = data
     *parents, leaf = path
     for segment in parents:
@@ -54,15 +51,3 @@ def _parse_env_value(raw: str) -> object:
     except yaml.YAMLError:
         return raw
     return parsed
-
-
-def _deep_merge(base: JSONDict, override: JSONDict) -> JSONDict:
-    result = base.copy()
-    for key, value in override.items():
-        existing = result.get(key)
-        if isinstance(existing, dict) and isinstance(value, dict):
-            result[key] = _deep_merge(dict(existing), dict(value))
-        else:
-            result[key] = value
-    return result
-

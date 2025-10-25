@@ -1,36 +1,12 @@
-"""Application settings and constants for Nova.
-
-This module provides centralized app-level configuration including:
-- Core app metadata (name, version, environment)
-- Path-related constants (directory names, filenames)
-
-Settings are loaded from environment variables and .env files using Pydantic Settings.
-
-Environment Variables:
-    NOVA_APP__PROJECT_NAME: Override project name (default: nova)
-    NOVA_APP__VERSION: Override version (default: 0.1.0)
-    NOVA_APP__ENVIRONMENT: Set environment - test/dev/prod (default: dev)
-    NOVA_PATHS__CONFIG_DIR_NAME: Override config directory name (default: nova)
-    NOVA_PATHS__GLOBAL_CONFIG_FILENAME: Override global config filename (default: config.yaml)
-    NOVA_PATHS__PROJECT_CONFIG_FILENAME: Override project config filename (default: nova.yaml)
-    NOVA_PATHS__PROJECT_SUBDIR_NAME: Override project subdirectory (default: .nova)
-
-Example .env file:
-    NOVA_APP__ENVIRONMENT=prod
-    NOVA_APP__VERSION=1.0.0
-    NOVA_PATHS__CONFIG_DIR_NAME=.config
-
-Usage:
-    from nova.settings import settings
-
-    print(f"Running {settings.app.project_name} v{settings.app.version}")
-    print(f"Config dir: {settings.paths.config_dir_name}")
-"""
+from __future__ import annotations
 
 from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from nova.config.file import ConfigFileNames, ConfigStoreSettings
+from nova.utils import AppDirectories
 
 
 class AppInfo(BaseModel):
@@ -48,38 +24,37 @@ class AppInfo(BaseModel):
 
 
 class AppPaths(BaseModel):
-    """Path configuration for Nova.
+    """Path configuration for Nova following XDG Base Directory standard.
 
     Attributes:
-        config_dir_name: Directory name for global config (e.g., ~/.config/nova)
+        config_dir_name: Directory name for config (e.g., ~/.config/nova)
+        data_dir_name: Directory name for data (e.g., ~/.local/share/nova)
         project_subdir_name: Subdirectory name for project configs
         global_config_filename: Filename for global config file
         project_config_filename: Filename for project-level config file (in .nova subdir)
         user_config_filename: Filename for user-specific config file (in .nova subdir)
+        marketplaces_dir_name: Directory name for marketplace clones (in data dir)
+        marketplaces_metadata_filename: Filename for marketplace metadata
     """
 
+    # XDG Base Directory paths
     config_dir_name: str = "nova"
+    data_dir_name: str = "nova"
+
+    # Project paths
     project_subdir_name: str = ".nova"
+
+    # Config filenames
     global_config_filename: str = "config.yaml"
     project_config_filename: str = "config.yaml"
     user_config_filename: str = "config.local.yaml"
 
+    # Marketplace data paths
+    marketplaces_dir_name: str = "marketplaces"
+    marketplaces_metadata_filename: str = "data.json"
+
 
 class Settings(BaseSettings):
-    """Nova application settings.
-
-    Provides centralized configuration management with support for:
-    - Environment variable overrides
-    - .env file loading
-    - Nested settings structure
-    - Type validation
-
-    Access settings via the pre-initialized `settings` singleton:
-        from nova.settings import settings
-        settings.app.version
-        settings.paths.config_dir_name
-    """
-
     app: AppInfo = AppInfo()
     paths: AppPaths = AppPaths()
 
@@ -92,20 +67,24 @@ class Settings(BaseSettings):
         nested_model_default_partial_update=True,
     )
 
+    def to_app_directories(self) -> AppDirectories:
+        return AppDirectories(
+            app_name=self.paths.config_dir_name,
+            project_marker=self.paths.project_subdir_name,
+        )
+
+    def to_config_store_settings(self) -> ConfigStoreSettings:
+        return ConfigStoreSettings(
+            directories=self.to_app_directories(),
+            filenames=ConfigFileNames(
+                global_file=self.paths.global_config_filename,
+                project_file=self.paths.project_config_filename,
+                user_file=self.paths.user_config_filename,
+            ),
+        )
+
 
 def get_settings() -> Settings:
-    """Get the singleton settings instance.
-
-    Returns:
-        Settings: The application settings
-
-    Example:
-        from nova.settings import get_settings
-
-        settings = get_settings()
-        print(settings.app.version)
-        print(settings.paths.config_dir_name)
-    """
     global _settings
     if _settings is None:
         _settings = Settings()

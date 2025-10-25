@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from nova.config.merger import merge_configs
 from nova.config.models import GlobalConfig, NovaConfig, ProjectConfig, UserConfig
 
@@ -43,7 +45,7 @@ def test_merge_none_configs_returns_empty() -> None:
     result = merge_configs(None, None, None)
 
     assert isinstance(result, NovaConfig)
-    assert result.model_dump() == {}
+    assert result.model_dump() == {"marketplaces": []}
 
 
 def test_merge_ignores_none_values() -> None:
@@ -53,3 +55,36 @@ def test_merge_ignores_none_values() -> None:
     result = merge_configs(global_cfg, project_cfg, None)
 
     assert result.model_dump()["feature"] == {"enabled": True, "threshold": 10}
+
+
+def test_merge_marketplaces_combines_scopes(tmp_path: Path) -> None:
+    global_cfg = GlobalConfig.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "official",
+                    "source": {"type": "github", "repo": "owner/official"},
+                }
+            ]
+        }
+    )
+
+    local_marketplace_dir = tmp_path / "internal"
+    local_marketplace_dir.mkdir()
+    project_cfg = ProjectConfig.model_validate(
+        {
+            "marketplaces": [
+                {
+                    "name": "internal",
+                    "source": {"type": "local", "path": str(local_marketplace_dir)},
+                }
+            ]
+        }
+    )
+
+    result = merge_configs(global_cfg, project_cfg, None)
+
+    names = [entry.name for entry in result.marketplaces]
+    assert names == ["official", "internal"]
+    assert result.marketplaces[0].source.type == "github"
+    assert result.marketplaces[1].source.type == "local"

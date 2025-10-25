@@ -6,10 +6,11 @@ readme = "README.md"
 requires-python = ">=3.13"
 
 dependencies = [
-    "loguru>=0.7.3",
-    "pydantic>=2.12.3",
-    "pydantic-settings>=2.11.0",
-    "pyyaml>=6.0.3",
+  "loguru>=0.7.3",
+  "pydantic[email]>=2.12.3",
+  "pydantic-extra-types[semver]>=2.10.6",
+  "pydantic-settings>=2.11.0",
+  "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
@@ -20,6 +21,8 @@ dev = [
   "pytest>=8.4.2",
   "pytest-asyncio>=1.2.0",
   "pytest-cov>=7.0.0",
+  "pytest-mock>=3.15.1",
+  "tach>=0.29.0",
 ]
 
 [project.scripts]
@@ -60,7 +63,6 @@ select = [
 ]
 
 "__init__.py" = ["F401"]
-"src/nova/utils/functools/models/option.py" = ["UP046", "UP047"]
 "src/nova/utils/functools/models/result.py" = ["UP046", "UP047"]
 
 [tool.pyright]

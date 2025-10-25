@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
+
+from nova.utils.dicts import deep_merge
 
 from .models import (
     GlobalConfig,
@@ -24,25 +27,13 @@ def merge_configs(
         if scope is None:
             continue
         scope_data = _strip_none_dict(scope.model_dump())
-        merged_data = _deep_merge(merged_data, scope_data)
+        merged_data = deep_merge(
+            merged_data,
+            scope_data,
+            list_merge_strategy=_config_list_merge,
+        )
 
     return NovaConfig.model_validate(merged_data)
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    result = base.copy()
-    for key, value in override.items():
-        if value is None:
-            continue
-        if key in result:
-            base_value = result[key]
-            if isinstance(base_value, dict) and isinstance(value, dict):
-                result[key] = _deep_merge(base_value, value)
-            else:
-                result[key] = value
-        else:
-            result[key] = value
-    return result
 
 
 def _strip_none_dict(data: dict[str, Any]) -> dict[str, Any]:
@@ -55,3 +46,53 @@ def _strip_none_dict(data: dict[str, Any]) -> dict[str, Any]:
         else:
             cleaned[key] = value
     return cleaned
+
+
+type ListMergeStrategy = Callable[[list[object], list[object]], list[object]]
+
+
+def _config_list_merge(key: str, base_list: list[object], override_list: list[object]) -> list[object]:
+    strategy = _LIST_MERGE_STRATEGIES.get(key, _default_list_merge)
+    return strategy(base_list, override_list)
+
+
+def _default_list_merge(_: list[object], override_list: list[object]) -> list[object]:
+    return list(override_list)
+
+
+def _merge_marketplaces(
+    base_marketplaces: list[object],
+    override_marketplaces: list[object],
+) -> list[object]:
+    merged: list[object] = []
+    index_by_name: dict[str, int] = {}
+
+    def _append(entry: object) -> None:
+        merged.append(entry)
+        name = _extract_marketplace_name(entry)
+        if name is not None:
+            index_by_name[name] = len(merged) - 1
+
+    for entry in base_marketplaces:
+        _append(entry)
+
+    for entry in override_marketplaces:
+        name = _extract_marketplace_name(entry)
+        if name is not None and name in index_by_name:
+            merged[index_by_name[name]] = entry
+        else:
+            _append(entry)
+
+    return merged
+
+
+def _extract_marketplace_name(entry: object) -> str | None:
+    if isinstance(entry, dict):
+        name = entry.get("name")
+        return name if isinstance(name, str) else None
+    return getattr(entry, "name", None)
+
+
+_LIST_MERGE_STRATEGIES: dict[str, ListMergeStrategy] = {
+    "marketplaces": _merge_marketplaces,
+}
