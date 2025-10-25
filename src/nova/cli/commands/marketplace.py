@@ -21,7 +21,7 @@ from nova.marketplace.models import (
     MarketplaceSourceParseError,
 )
 from nova.settings import settings
-from nova.utils.functools.models import is_err
+from nova.utils.functools.models import Err, Ok
 
 ScopeOption = Annotated[
     MarketplaceScope,
@@ -93,16 +93,16 @@ def add(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    result = marketplace.add(source, scope=scope, working_dir=working_dir)
-
-    if is_err(result):
-        _handle_error(result.unwrap_err())
-        raise typer.Exit(code=1)
-
-    info = result.unwrap()
-
-    bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
-    typer.secho(f"✓ Added '{info.name}' with {info.bundle_count} {bundle_text} ({scope.value})", fg=typer.colors.GREEN)
+    match marketplace.add(source, scope=scope, working_dir=working_dir):
+        case Ok(info):
+            bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
+            typer.secho(
+                f"✓ Added '{info.name}' with {info.bundle_count} {bundle_text} ({scope.value})",
+                fg=typer.colors.GREEN
+            )
+        case Err(error):
+            _handle_error(error)
+            raise typer.Exit(code=1)
 
 
 @app.command("remove")
@@ -133,15 +133,12 @@ def remove(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    result = marketplace.remove(name_or_source, scope=scope, working_dir=working_dir)
-
-    if is_err(result):
-        _handle_error(result.unwrap_err())
-        raise typer.Exit(code=1)
-
-    info = result.unwrap()
-
-    typer.secho(f"✓ Removed '{info.name}'", fg=typer.colors.GREEN)
+    match marketplace.remove(name_or_source, scope=scope, working_dir=working_dir):
+        case Ok(info):
+            typer.secho(f"✓ Removed '{info.name}'", fg=typer.colors.GREEN)
+        case Err(error):
+            _handle_error(error)
+            raise typer.Exit(code=1)
 
 
 @app.command("list")
@@ -164,23 +161,20 @@ def list_marketplaces(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    result = marketplace.list(working_dir=working_dir)
+    match marketplace.list(working_dir=working_dir):
+        case Ok(infos):
+            if not infos:
+                typer.echo("No marketplaces configured.")
+                return
 
-    if is_err(result):
-        _handle_error(result.unwrap_err())
-        raise typer.Exit(code=1)
-
-    infos = result.unwrap()
-
-    if not infos:
-        typer.echo("No marketplaces configured.")
-        return
-
-    for info in infos:
-        bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
-        typer.secho(f"• {info.name}", fg=typer.colors.CYAN, bold=True)
-        typer.echo(f"  {info.description}")
-        typer.echo(f"  {info.bundle_count} {bundle_text} • {info.source}")
+            for info in infos:
+                bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
+                typer.secho(f"• {info.name}", fg=typer.colors.CYAN, bold=True)
+                typer.echo(f"  {info.description}")
+                typer.echo(f"  {info.bundle_count} {bundle_text} • {info.source}")
+        case Err(error):
+            _handle_error(error)
+            raise typer.Exit(code=1)
 
 
 @app.command("show")
@@ -204,19 +198,16 @@ def show(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    result = marketplace.get(name, working_dir=working_dir)
-
-    if is_err(result):
-        _handle_error(result.unwrap_err())
-        raise typer.Exit(code=1)
-
-    info = result.unwrap()
-
-    bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
-    typer.secho(f"{info.name}", fg=typer.colors.CYAN, bold=True)
-    typer.echo(f"Description: {info.description}")
-    typer.echo(f"Source: {info.source}")
-    typer.echo(f"Bundles: {info.bundle_count} {bundle_text}")
+    match marketplace.get(name, working_dir=working_dir):
+        case Ok(info):
+            bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
+            typer.secho(f"{info.name}", fg=typer.colors.CYAN, bold=True)
+            typer.echo(f"Description: {info.description}")
+            typer.echo(f"Source: {info.source}")
+            typer.echo(f"Bundles: {info.bundle_count} {bundle_text}")
+        case Err(error):
+            _handle_error(error)
+            raise typer.Exit(code=1)
 
 
 def _handle_error(error: MarketplaceError) -> None:
