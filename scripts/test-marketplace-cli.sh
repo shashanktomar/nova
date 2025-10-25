@@ -45,6 +45,16 @@ print_cli_start "nova config show"
 uv run nova config show
 print_cli_end
 
+print_test "4.1" "List all marketplaces"
+print_cli_start "nova marketplace list"
+uv run nova marketplace list
+print_cli_end
+
+print_test "4.2" "Show specific marketplace"
+print_cli_start "nova marketplace show test-marketplace"
+uv run nova marketplace show test-marketplace
+print_cli_end
+
 print_test "5" "Duplicate marketplace (should fail)"
 print_info "Expecting error: marketplace already exists"
 print_cli_start "nova marketplace add <fixtures>/valid-basic --scope global"
@@ -67,6 +77,43 @@ print_test "8" "Missing required fields (should fail)"
 print_info "Expecting error: missing 'owner' field"
 print_cli_start "nova marketplace add <fixtures>/invalid-missing-fields"
 uv run nova marketplace add "$FIXTURES_DIR/invalid-missing-fields" || print_expected_failure "Failed as expected"
+print_cli_end
+
+print_test "9" "Remove marketplace by name"
+print_cli_start "nova marketplace remove test-marketplace"
+uv run nova marketplace remove test-marketplace
+print_cli_end
+
+print_test "10" "Show config after removal"
+print_cli_start "nova config show"
+uv run nova config show
+print_cli_end
+
+print_test "11" "Remove marketplace by source"
+print_cli_start "nova marketplace remove shashanktomar/nova-marketplace-example"
+uv run nova marketplace remove shashanktomar/nova-marketplace-example
+print_cli_end
+
+print_test "12" "Show config (should have no marketplaces)"
+print_cli_start "nova config show"
+uv run nova config show
+print_cli_end
+
+print_test "13" "Remove non-existent marketplace (should fail)"
+print_info "Expecting error: marketplace not found"
+print_cli_start "nova marketplace remove non-existent"
+uv run nova marketplace remove non-existent || print_expected_failure "Failed as expected"
+print_cli_end
+
+print_test "14" "List when no marketplaces configured"
+print_cli_start "nova marketplace list"
+uv run nova marketplace list
+print_cli_end
+
+print_test "15" "Show non-existent marketplace (should fail)"
+print_info "Expecting error: marketplace not found"
+print_cli_start "nova marketplace show non-existent"
+uv run nova marketplace show non-existent || print_expected_failure "Failed as expected"
 print_cli_end
 
 print_header "Cleanup"

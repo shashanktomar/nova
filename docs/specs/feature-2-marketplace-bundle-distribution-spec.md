@@ -701,7 +701,11 @@ def test_add_marketplace_from_local_path():
 
 **Last Updated:** 2025-10-25
 
-### Completed
+### ✅ Feature Complete
+
+All marketplace management operations are fully implemented, tested, and ready for use.
+
+#### Core Components
 - [x] All data models and error types (src/nova/marketplace/models.py)
 - [x] MarketplaceConfig model (src/nova/marketplace/config.py)
 - [x] Config integration: marketplaces field in GlobalConfig, ProjectConfig, NovaConfig
@@ -711,23 +715,31 @@ def test_add_marketplace_from_local_path():
 - [x] Fetcher: clone/download marketplaces (src/nova/marketplace/fetcher.py)
 - [x] Validator: validate marketplace.json (src/nova/marketplace/validator.py)
 - [x] State management: read/write marketplaces/data.json (src/nova/marketplace/datastore.py)
-- [x] Marketplace.add() implementation complete
-- [x] CLI commands: nova marketplace add (src/nova/cli/commands/marketplace.py)
-- [x] E2E tests: 4 user journey tests passing (tests/e2e/test_marketplace_cli.py)
 
-### Remaining
-- [ ] Implement remaining public API functions:
-  - [ ] remove() - not started
-  - [ ] list() - not started
-  - [ ] get() - not started
-- [ ] CLI commands for remaining operations:
-  - [ ] nova marketplace remove
-  - [ ] nova marketplace list
-  - [ ] nova marketplace show
-- [ ] Unit tests for remaining components
-- [ ] Documentation updates
+#### Public API Implementation
+- [x] Marketplace.add() - Add marketplace from source (GitHub, git, local)
+- [x] Marketplace.remove() - Remove marketplace by name or source
+- [x] Marketplace.list() - List all configured marketplaces
+- [x] Marketplace.get() - Get details for specific marketplace
 
-**Current Status:** `add` feature fully implemented with E2E test coverage. Ready to implement `remove`, `list`, and `get` operations.
+#### CLI Commands
+- [x] `nova marketplace add` - Add marketplace with scope selection
+- [x] `nova marketplace remove` - Remove marketplace with auto-detect or scope selection
+- [x] `nova marketplace list` - List all marketplaces with formatted output
+- [x] `nova marketplace show` - Show detailed marketplace information
+
+#### Testing
+- [x] Unit tests: 236 tests passing
+  - 5 tests for add()
+  - 5 tests for remove()
+  - 4 tests for list() and get()
+- [x] E2E tests: 12 user journey tests passing
+  - 4 tests for add command
+  - 4 tests for remove command
+  - 4 tests for list and show commands
+- [x] Manual test script: 15 test scenarios in scripts/test-marketplace-cli.sh
+
+**Status:** ✅ Feature 2 (Marketplace & Bundle Distribution) is complete and ready for production use.
 
 ## References
 

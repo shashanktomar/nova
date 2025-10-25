@@ -144,6 +144,81 @@ def remove(
     typer.secho(f"✓ Removed '{info.name}'", fg=typer.colors.GREEN)
 
 
+@app.command("list")
+def list_marketplaces(
+    working_dir: WorkingDirOption = None,
+) -> None:
+    """List all configured marketplaces.
+
+    Examples:
+
+        # List all marketplaces
+        nova marketplace list
+    """
+    config_store = FileConfigStore(
+        working_dir=working_dir,
+        settings=settings.to_config_store_settings(),
+    )
+
+    directories = settings.to_app_directories()
+    datastore = FileDataStore(namespace="marketplaces", directories=directories)
+    marketplace = Marketplace(config_store, datastore, directories)
+
+    result = marketplace.list(working_dir=working_dir)
+
+    if is_err(result):
+        _handle_error(result.unwrap_err())
+        raise typer.Exit(code=1)
+
+    infos = result.unwrap()
+
+    if not infos:
+        typer.echo("No marketplaces configured.")
+        return
+
+    for info in infos:
+        bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
+        typer.secho(f"• {info.name}", fg=typer.colors.CYAN, bold=True)
+        typer.echo(f"  {info.description}")
+        typer.echo(f"  {info.bundle_count} {bundle_text} • {info.source}")
+
+
+@app.command("show")
+def show(
+    name: Annotated[str, typer.Argument(help="Marketplace name")],
+    working_dir: WorkingDirOption = None,
+) -> None:
+    """Show details for a specific marketplace.
+
+    Examples:
+
+        # Show marketplace details
+        nova marketplace show official-bundles
+    """
+    config_store = FileConfigStore(
+        working_dir=working_dir,
+        settings=settings.to_config_store_settings(),
+    )
+
+    directories = settings.to_app_directories()
+    datastore = FileDataStore(namespace="marketplaces", directories=directories)
+    marketplace = Marketplace(config_store, datastore, directories)
+
+    result = marketplace.get(name, working_dir=working_dir)
+
+    if is_err(result):
+        _handle_error(result.unwrap_err())
+        raise typer.Exit(code=1)
+
+    info = result.unwrap()
+
+    bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
+    typer.secho(f"{info.name}", fg=typer.colors.CYAN, bold=True)
+    typer.echo(f"Description: {info.description}")
+    typer.echo(f"Source: {info.source}")
+    typer.echo(f"Bundles: {info.bundle_count} {bundle_text}")
+
+
 def _handle_error(error: MarketplaceError) -> None:
     """Handle marketplace errors with user-friendly messages."""
     match error:

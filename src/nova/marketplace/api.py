@@ -90,7 +90,10 @@ class Marketplace:
         working_dir: Path | None = None,
     ) -> Result[list[MarketplaceInfo], MarketplaceError]:
         """List all configured marketplaces."""
-        raise NotImplementedError
+        return (
+            self._get_all_marketplace_configs()
+            .map(self._build_marketplace_infos_from_configs)
+        )
 
     def get(
         self,
@@ -99,7 +102,11 @@ class Marketplace:
         working_dir: Path | None = None,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
         """Get details for a specific marketplace."""
-        raise NotImplementedError
+        return (
+            self._load_marketplace_state(name)
+            .and_then(self._attach_marketplace_info)
+            .map(lambda data: data[1])
+        )
 
     def _fetch_marketplace_to_temp(
         self,
@@ -340,3 +347,38 @@ class Marketplace:
             shutil.rmtree(state.install_location)
 
         return Ok((state, info))
+
+    def _get_all_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
+        return self._config_provider.get_marketplace_config()
+
+    def _build_marketplace_infos_from_configs(
+        self,
+        configs: list[MarketplaceConfig],
+    ) -> list[MarketplaceInfo]:
+        infos: list[MarketplaceInfo] = []
+        for config in configs:
+            state_result = self._datastore.load(config.name)
+            if is_err(state_result):
+                continue
+
+            state_data = state_result.unwrap()
+            state = MarketplaceState.model_validate(state_data)
+
+            manifest_path = state.install_location / "marketplace.json"
+            bundle_count = 0
+            description = ""
+
+            if manifest_path.exists():
+                manifest_data = json.loads(manifest_path.read_text())
+                bundle_count = len(manifest_data.get("bundles", []))
+                description = manifest_data.get("description", "")
+
+            info = MarketplaceInfo(
+                name=state.name,
+                description=description,
+                source=state.source,
+                bundle_count=bundle_count,
+            )
+            infos.append(info)
+
+        return infos

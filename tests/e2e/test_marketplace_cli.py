@@ -186,3 +186,155 @@ def test_add_marketplace_invalid_source() -> None:
         assert "error: invalid marketplace source" in result.stderr
         assert "valid formats are" in result.stderr
         assert "owner/repo (GitHub)" in result.stderr
+
+
+def test_remove_marketplace_by_name() -> None:
+    """Journey 5: remove marketplace by name."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        local_dir = base / "local-marketplace"
+        _copy_marketplace_fixture("valid-basic", local_dir)
+
+        add_result = _invoke(["marketplace", "add", str(local_dir)], env=env)
+        assert add_result.exit_code == 0
+
+        remove_result = _invoke(["marketplace", "remove", "test-marketplace"], env=env)
+        assert remove_result.exit_code == 0
+        assert "✓ Removed 'test-marketplace'" in remove_result.stdout
+
+        config_path = Path(env["XDG_CONFIG_HOME"]) / "nova" / "config.yaml"
+        config = _read_config(config_path)
+        assert len(config.get("marketplaces", [])) == 0
+
+        data_dir = Path(env["XDG_DATA_HOME"]) / "nova" / "marketplaces"
+        datastore_content = _read_datastore(data_dir / "data.json")
+        assert "test-marketplace" not in datastore_content
+
+
+def test_remove_marketplace_by_source() -> None:
+    """Journey 6: remove marketplace by source."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        mirror_root = base / "git-mirrors"
+        _create_github_mirror("valid-basic", owner="owner", repo="repo", mirror_root=mirror_root)
+        _configure_git_redirect(Path(env["HOME"]), mirror_root)
+
+        add_result = _invoke(["marketplace", "add", "owner/repo"], env=env)
+        assert add_result.exit_code == 0
+
+        remove_result = _invoke(["marketplace", "remove", "owner/repo"], env=env)
+        assert remove_result.exit_code == 0
+        assert "✓ Removed 'test-marketplace'" in remove_result.stdout
+
+        config_path = Path(env["XDG_CONFIG_HOME"]) / "nova" / "config.yaml"
+        config = _read_config(config_path)
+        assert len(config.get("marketplaces", [])) == 0
+
+
+def test_remove_marketplace_with_scope() -> None:
+    """Journey 7: remove marketplace from specific scope."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        project_root = base / "project"
+        local_fixture = project_root / "marketplaces" / "internal"
+        _copy_marketplace_fixture("valid-basic", local_fixture)
+        (project_root / ".nova").mkdir(parents=True, exist_ok=True)
+
+        add_result = _invoke(
+            ["marketplace", "add", str(local_fixture), "--scope", "project", "--working-dir", str(project_root)],
+            env=env,
+        )
+        assert add_result.exit_code == 0
+
+        remove_result = _invoke(
+            ["marketplace", "remove", "test-marketplace", "--scope", "project", "--working-dir", str(project_root)],
+            env=env,
+        )
+        assert remove_result.exit_code == 0
+        assert "✓ Removed 'test-marketplace'" in remove_result.stdout
+
+        project_config = project_root / ".nova" / "config.yaml"
+        config = _read_config(project_config)
+        assert len(config.get("marketplaces", [])) == 0
+
+
+def test_remove_marketplace_not_found() -> None:
+    """Journey 8: removing non-existent marketplace shows helpful error."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+
+        result = _invoke(["marketplace", "remove", "non-existent"], env=env)
+
+        assert result.exit_code == 1
+        assert "error: marketplace 'non-existent' not found" in result.stderr
+        assert "hint: use 'nova marketplace list' to see available marketplaces" in result.stderr
+
+
+def test_list_marketplaces() -> None:
+    """Journey 9: list all configured marketplaces."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        local_dir1 = base / "marketplace1"
+        local_dir2 = base / "marketplace2"
+        _copy_marketplace_fixture("valid-basic", local_dir1)
+        _copy_marketplace_fixture("valid-one-bundle", local_dir2)
+
+        add1_result = _invoke(["marketplace", "add", str(local_dir1)], env=env)
+        assert add1_result.exit_code == 0
+
+        add2_result = _invoke(["marketplace", "add", str(local_dir2)], env=env)
+        assert add2_result.exit_code == 0
+
+        list_result = _invoke(["marketplace", "list"], env=env)
+        assert list_result.exit_code == 0
+        assert "• test-marketplace" in list_result.stdout
+        assert "• test-one-bundle" in list_result.stdout
+        assert "A test marketplace for manual CLI testing" in list_result.stdout
+
+
+def test_list_no_marketplaces() -> None:
+    """Journey 10: list shows message when no marketplaces configured."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+
+        result = _invoke(["marketplace", "list"], env=env)
+
+        assert result.exit_code == 0
+        assert "No marketplaces configured" in result.stdout
+
+
+def test_show_marketplace() -> None:
+    """Journey 11: show details for specific marketplace."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+        local_dir = base / "local-marketplace"
+        _copy_marketplace_fixture("valid-basic", local_dir)
+
+        add_result = _invoke(["marketplace", "add", str(local_dir)], env=env)
+        assert add_result.exit_code == 0
+
+        show_result = _invoke(["marketplace", "show", "test-marketplace"], env=env)
+        assert show_result.exit_code == 0
+        assert "test-marketplace" in show_result.stdout
+        assert "Description: A test marketplace for manual CLI testing" in show_result.stdout
+        assert "Source:" in show_result.stdout
+        assert "Bundles:" in show_result.stdout
+
+
+def test_show_marketplace_not_found() -> None:
+    """Journey 12: show non-existent marketplace shows error."""
+    with RUNNER.isolated_filesystem():
+        base = Path.cwd()
+        env = _create_env(base)
+
+        result = _invoke(["marketplace", "show", "non-existent"], env=env)
+
+        assert result.exit_code == 1
+        assert "error: marketplace 'non-existent' not found" in result.stderr
