@@ -224,16 +224,14 @@ class Marketplace:
             last_updated=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         )
 
-        save_result = self._datastore.save(marketplace_name, state.model_dump(mode="json"))
-        if is_err(save_result):
-            return Err(
-                MarketplaceAddError(
-                    source=str(source),
-                    message=f"Failed to save marketplace state: {save_result.unwrap_err().message}",
-                )
-            )
-
-        return Ok((source, final_location, marketplace_name))
+        return (
+            self._datastore.save(marketplace_name, state.model_dump(mode="json"))
+            .map_err(lambda error: MarketplaceAddError(
+                source=str(source),
+                message=f"Failed to save marketplace state: {error.message}",
+            ))
+            .map(lambda _: (source, final_location, marketplace_name))
+        )
 
     def _save_to_config(
         self,
@@ -243,17 +241,15 @@ class Marketplace:
         source, final_location, marketplace_name = data
 
         config = MarketplaceConfig(name=marketplace_name, source=source)
-        save_result = self._config_provider.add_marketplace(config, scope)
 
-        if is_err(save_result):
-            return Err(
-                MarketplaceAddError(
-                    source=str(source),
-                    message=f"Failed to save marketplace config: {save_result.unwrap_err().message}",
-                )
-            )
-
-        return Ok((source, final_location, marketplace_name))
+        return (
+            self._config_provider.add_marketplace(config, scope)
+            .map_err(lambda error: MarketplaceAddError(
+                source=str(source),
+                message=f"Failed to save marketplace config: {error.message}",
+            ))
+            .map(lambda _: (source, final_location, marketplace_name))
+        )
 
     def _build_marketplace_info(
         self,
@@ -321,17 +317,14 @@ class Marketplace:
         if context.state is None:
             return Ok(context)
 
-        delete_result = self._datastore.delete(context.name)
-        if is_err(delete_result):
-            error = delete_result.unwrap_err()
-            return Err(
-                MarketplaceAddError(
-                    source=str(context.config.source),
-                    message=f"Failed to delete marketplace state: {error.message}",
-                )
-            )
-
-        return Ok(context)
+        return (
+            self._datastore.delete(context.name)
+            .map_err(lambda error: MarketplaceAddError(
+                source=str(context.config.source),
+                message=f"Failed to delete marketplace state: {error.message}",
+            ))
+            .map(lambda _: context)
+        )
 
     def _cleanup_directory_if_present(
         self,
@@ -410,18 +403,14 @@ class Marketplace:
         self,
         name: str,
     ) -> Result[MarketplaceState, MarketplaceError]:
-        load_result = self._datastore.load(name)
-        if is_err(load_result):
-            return Err(
-                MarketplaceNotFoundError(
-                    name_or_source=name,
-                    message=f"Marketplace '{name}' state not found",
-                )
-            )
-
-        state_data = load_result.unwrap()
-        state = MarketplaceState.model_validate(state_data)
-        return Ok(state)
+        return (
+            self._datastore.load(name)
+            .map_err(lambda _: MarketplaceNotFoundError(
+                name_or_source=name,
+                message=f"Marketplace '{name}' state not found",
+            ))
+            .map(lambda state_data: MarketplaceState.model_validate(state_data))
+        )
 
     def _get_all_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         return self._config_provider.get_marketplace_config()
