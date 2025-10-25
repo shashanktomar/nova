@@ -11,12 +11,10 @@ from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
-from nova.common import create_logger
+from nova.common import AppDirectories, create_logger, get_data_directory_from_dirs
 from nova.datastore import DataStore
 from nova.datastore.models import DataStoreKeyNotFoundError
-from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err
-from nova.utils.paths import get_data_directory_from_dirs
 
 from .config import MarketplaceConfig
 from .fetcher import fetch_marketplace

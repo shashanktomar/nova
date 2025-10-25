@@ -1,5 +1,8 @@
 """Common models used across Nova."""
 
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel
@@ -22,3 +25,9 @@ class AppPaths(BaseModel):
     user_config_filename: str = "config.local.yaml"
     marketplaces_dir_name: str = "marketplaces"
     marketplaces_metadata_filename: str = "data.json"
+
+
+@dataclass(frozen=True)
+class AppDirectories:
+    app_name: str = APP_NAME
+    project_marker: str = f".{APP_NAME}"

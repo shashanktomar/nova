@@ -14,9 +14,9 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from nova.constants import APP_NAME
-from nova.utils import PathsConfig, get_data_directory
 
-from .models import AppInfo
+from .models import AppDirectories, AppInfo
+from .paths import get_data_directory_from_dirs
 
 
 class LoggingConfig(BaseModel):
@@ -30,12 +30,12 @@ class LoggingConfig(BaseModel):
     format: Literal["json", "text"] = Field(default="text")
 
 
-def setup_cli_logging(app_info: AppInfo, config: LoggingConfig, paths: PathsConfig) -> int:
+def setup_cli_logging(app_info: AppInfo, config: LoggingConfig, directories: AppDirectories) -> int:
     logger.enable(APP_NAME)
     logger.remove()
     logger.configure(extra={"scope": "cli", "env": app_info.environment})
 
-    log_file = Path(config.log_file).expanduser() if config.log_file else _get_default_log_file_path(paths)
+    log_file = Path(config.log_file).expanduser() if config.log_file else _get_default_log_file_path(directories)
 
     log_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,7 +94,7 @@ def _get_text_format() -> str:
     return "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message} | {extra}\n{exception}"
 
 
-def _get_default_log_file_path(paths: PathsConfig) -> Path:
-    data_dir = get_data_directory(paths)
+def _get_default_log_file_path(directories: AppDirectories) -> Path:
+    data_dir = get_data_directory_from_dirs(directories)
     logs_dir = data_dir / "logs"
     return logs_dir / "nova.log"

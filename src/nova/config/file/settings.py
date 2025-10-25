@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from nova.utils.directories import AppDirectories
+from nova.common import AppDirectories
 
 
 @dataclass(frozen=True)

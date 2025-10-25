@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from nova.common import AppDirectories
 from nova.datastore.file import FileDataStore
 from nova.datastore.models import (
     DataStoreKeyNotFoundError,
     DataStoreReadError,
     DataStoreWriteError,
 )
-from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import is_err, is_ok
 
 

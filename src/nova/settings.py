@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from nova.common import AppInfo, AppPaths
+from nova.common import AppDirectories, AppInfo, AppPaths
 from nova.config.file import ConfigFileNames, ConfigStoreSettings
-from nova.utils import AppDirectories
-from nova.utils.paths import PathsConfig
 
 
 class Settings(BaseSettings):
@@ -35,12 +33,6 @@ class Settings(BaseSettings):
                 project_file=self.paths.project_config_filename,
                 user_file=self.paths.user_config_filename,
             ),
-        )
-
-    def to_paths_config(self) -> PathsConfig:
-        return PathsConfig(
-            config_dir_name=self.paths.config_dir_name,
-            project_subdir_name=self.paths.project_subdir_name,
         )
 
 

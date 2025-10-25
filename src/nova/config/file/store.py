@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from pydantic import ValidationError
 
-from nova.common import create_logger
+from nova.common import create_logger, get_global_config_root
 from nova.marketplace import MarketplaceConfig, MarketplaceScope
 from nova.marketplace.models import (
     MarketplaceConfigLoadError,
@@ -18,7 +18,6 @@ from nova.marketplace.models import (
     MarketplaceSource,
 )
 from nova.utils.functools.models import Err, Ok, Result, is_err
-from nova.utils.paths import get_global_config_root_from_dirs
 
 from ..merger import merge_configs
 from ..models import (
@@ -257,7 +256,7 @@ class FileConfigStore(ConfigStore):
                 raise ValueError(f"Unexpected scope: {scope}")
 
     def _get_default_global_path(self) -> Path:
-        return get_global_config_root_from_dirs(self.settings.directories) / self.settings.global_file
+        return get_global_config_root(self.settings.directories) / self.settings.global_file
 
     def _get_default_project_path(self) -> Path:
         return self.working_dir / self.settings.project_marker / self.settings.project_file

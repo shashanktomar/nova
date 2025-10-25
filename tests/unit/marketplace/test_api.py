@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from nova.common import AppDirectories
 from nova.datastore.models import DataStoreKeyNotFoundError
 from nova.marketplace import Marketplace, MarketplaceScope
 from nova.marketplace.config import MarketplaceConfig
@@ -15,7 +16,6 @@ from nova.marketplace.models import (
     MarketplaceAlreadyExistsError,
     MarketplaceNotFoundError,
 )
-from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, Ok, Result, is_err, is_ok
 
 try:

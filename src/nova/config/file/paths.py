@@ -3,12 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from nova.utils.paths import (
-    get_global_config_root_from_dirs,
-    get_project_root_from_dirs,
-    resolve_project_dir_from_dirs,
-    resolve_working_directory,
-)
+from nova.common import get_global_config_root, get_project_root, resolve_project_dir, resolve_working_directory
 
 from .settings import ConfigStoreSettings
 
@@ -24,7 +19,7 @@ def discover_config_paths(working_dir: Path, settings: ConfigStoreSettings) -> R
     start_dir = resolve_working_directory(working_dir)
 
     global_path = _resolve_global_config(settings)
-    project_root = get_project_root_from_dirs(start_dir, settings.directories)
+    project_root = get_project_root(start_dir, settings.directories)
     project_path, user_path = _resolve_project_configs(project_root, settings)
 
     return ResolvedConfigPaths(
@@ -35,7 +30,7 @@ def discover_config_paths(working_dir: Path, settings: ConfigStoreSettings) -> R
 
 
 def _resolve_global_config(settings: ConfigStoreSettings) -> Path | None:
-    candidate = get_global_config_root_from_dirs(settings.directories) / settings.global_file
+    candidate = get_global_config_root(settings.directories) / settings.global_file
     return candidate if candidate.is_file() else None
 
 
@@ -46,7 +41,7 @@ def _resolve_project_configs(
     if project_root is None:
         return None, None
 
-    project_dir = resolve_project_dir_from_dirs(project_root, settings.directories)
+    project_dir = resolve_project_dir(project_root, settings.directories)
     if project_dir is None:
         return None, None
 

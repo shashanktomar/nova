@@ -5,10 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from nova.common import JsonValue
-from nova.utils.directories import AppDirectories
+from nova.common import AppDirectories, JsonValue, get_data_directory_from_dirs
 from nova.utils.functools.models import Err, Ok, Result
-from nova.utils.paths import get_data_directory_from_dirs
 
 from .models import DataStoreError, DataStoreKeyNotFoundError, DataStoreReadError, DataStoreWriteError
 

@@ -44,7 +44,7 @@ def _setup_logging() -> None:
         setup_cli_logging(
             app_info=settings.app,
             config=logging_config,
-            paths=settings.to_paths_config(),
+            directories=settings.to_app_directories(),
         )
         logger.debug("CLI logging initialized", config=logging_config.model_dump())
 

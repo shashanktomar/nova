@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from nova.utils.paths import (
-    PathsConfig,
-    get_data_directory,
+from nova.common import (
+    AppDirectories,
+    get_data_directory_from_dirs,
     get_global_config_root,
     get_project_root,
     resolve_project_dir,
@@ -15,12 +15,12 @@ from nova.utils.paths import (
 
 
 @pytest.fixture
-def paths_config() -> PathsConfig:
-    return PathsConfig(config_dir_name="nova", project_subdir_name=".nova")
+def app_directories() -> AppDirectories:
+    return AppDirectories(app_name="nova", project_marker=".nova")
 
 
 def test_get_project_root_defaults_to_cwd(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paths_config: PathsConfig
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, app_directories: AppDirectories
 ) -> None:
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -30,12 +30,12 @@ def test_get_project_root_defaults_to_cwd(
 
     monkeypatch.chdir(nested)
 
-    root = get_project_root(start_dir=None, config=paths_config)
+    root = get_project_root(start_dir=None, directories=app_directories)
 
     assert root == project_root
 
 
-def test_get_project_root_handles_starting_from_file(tmp_path: Path, paths_config: PathsConfig) -> None:
+def test_get_project_root_handles_starting_from_file(tmp_path: Path, app_directories: AppDirectories) -> None:
     project_root = tmp_path / "repo"
     project_root.mkdir()
     (project_root / ".nova").mkdir()
@@ -44,42 +44,42 @@ def test_get_project_root_handles_starting_from_file(tmp_path: Path, paths_confi
     file_path = nested / "module.py"
     file_path.write_text("# test")
 
-    root = get_project_root(start_dir=file_path, config=paths_config)
+    root = get_project_root(start_dir=file_path, directories=app_directories)
 
     assert root == project_root
 
 
-def test_get_project_root_returns_none_when_marker_missing(tmp_path: Path, paths_config: PathsConfig) -> None:
+def test_get_project_root_returns_none_when_marker_missing(tmp_path: Path, app_directories: AppDirectories) -> None:
     start = tmp_path / "workspace"
     start.mkdir()
 
-    root = get_project_root(start_dir=start, config=paths_config)
+    root = get_project_root(start_dir=start, directories=app_directories)
 
     assert root is None
 
 
-def test_resolve_project_dir_returns_directory_when_present(tmp_path: Path, paths_config: PathsConfig) -> None:
+def test_resolve_project_dir_returns_directory_when_present(tmp_path: Path, app_directories: AppDirectories) -> None:
     project_root = tmp_path / "repo"
     project_root.mkdir()
     config_dir = project_root / ".nova"
     config_dir.mkdir()
 
-    resolved = resolve_project_dir(project_root, paths_config)
+    resolved = resolve_project_dir(project_root, directories=app_directories)
 
     assert resolved == config_dir
 
 
-def test_resolve_project_dir_returns_none_when_directory_missing(tmp_path: Path, paths_config: PathsConfig) -> None:
+def test_resolve_project_dir_returns_none_when_directory_missing(tmp_path: Path, app_directories: AppDirectories) -> None:
     project_root = tmp_path / "repo"
     project_root.mkdir()
 
-    resolved = resolve_project_dir(project_root, paths_config)
+    resolved = resolve_project_dir(project_root, directories=app_directories)
 
     assert resolved is None
 
 
-def test_resolve_project_dir_returns_none_when_project_root_missing(paths_config: PathsConfig) -> None:
-    assert resolve_project_dir(None, paths_config) is None
+def test_resolve_project_dir_returns_none_when_project_root_missing(app_directories: AppDirectories) -> None:
+    assert resolve_project_dir(None, directories=app_directories) is None
 
 
 def test_resolve_working_directory_returns_parent_for_file(tmp_path: Path) -> None:
@@ -120,22 +120,22 @@ def test_resolve_working_directory_returns_path_when_resolve_fails(
 
 
 def test_get_data_directory_prefers_xdg_data_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paths_config: PathsConfig
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, app_directories: AppDirectories
 ) -> None:
     xdg_data = tmp_path / "xdg-data"
     monkeypatch.setenv("XDG_DATA_HOME", str(xdg_data))
 
-    data_dir = get_data_directory(paths_config)
+    data_dir = get_data_directory_from_dirs(directories=app_directories)
 
-    assert data_dir == xdg_data / paths_config.config_dir_name
+    assert data_dir == xdg_data / app_directories.app_name
 
 
 def test_get_global_config_root_prefers_xdg_config_home(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, paths_config: PathsConfig
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, app_directories: AppDirectories
 ) -> None:
     xdg_config = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_config))
 
-    config_root = get_global_config_root(paths_config)
+    config_root = get_global_config_root(directories=app_directories)
 
-    assert config_root == xdg_config / paths_config.config_dir_name
+    assert config_root == xdg_config / app_directories.app_name

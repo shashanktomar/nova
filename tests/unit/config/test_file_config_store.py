@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 import nova.config.file.store as store_module
+from nova.common import AppDirectories
 from nova.config import FileConfigStore
 from nova.config.file.paths import ResolvedConfigPaths
 from nova.config.file.settings import ConfigFileNames, ConfigStoreSettings
@@ -23,7 +24,6 @@ from nova.marketplace.models import (
     MarketplaceConfigSaveError,
     MarketplaceNotFoundError,
 )
-from nova.utils.directories import AppDirectories
 from nova.utils.functools.models import Err, is_err, is_ok
 
 TEST_SETTINGS = ConfigStoreSettings(
