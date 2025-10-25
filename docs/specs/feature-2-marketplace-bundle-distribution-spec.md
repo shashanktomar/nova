@@ -621,33 +621,6 @@ result = marketplace.add("anthropics/nova-bundles", scope=MarketplaceScope.GLOBA
 
 [TBD - will design after public API]
 
-## Implementation Status
-
-**Last Updated:** 2025-10-23
-
-### Completed
-- [x] All data models and error types (src/nova/marketplace/models.py)
-- [x] MarketplaceConfig model (src/nova/marketplace/config.py)
-- [x] Config integration: marketplaces field in GlobalConfig, ProjectConfig, NovaConfig
-- [x] Config merger: concatenates marketplace lists across scopes
-- [x] Public API signatures defined (src/nova/marketplace/__init__.py)
-- [x] Source parser: parse source string → typed MarketplaceSource (src/nova/marketplace/sources.py)
-- [x] Fetcher: clone/download marketplaces (src/nova/marketplace/fetcher.py)
-- [x] Validator: validate marketplace.json (src/nova/marketplace/validator.py)
-
-### Remaining
-- [ ] State management: read/write marketplaces/data.json
-- [ ] Implement public API functions (add, remove, list, get)
-  - [ ] add() - in progress (partially implemented)
-  - [ ] remove() - not started
-  - [ ] list() - not started
-  - [ ] get() - not started
-- [ ] CLI commands: src/nova/cli/commands/marketplace.py
-- [ ] Tests for all components
-- [ ] Documentation
-
-**Next:** Complete state management module and finish add() implementation
-
 ## E2E Testing Strategy
 
 ### Philosophy
@@ -723,6 +696,38 @@ def test_add_marketplace_from_local_path():
         # Execute: Invoke CLI command
         # Verify: Exit code, output message, file system state
 ```
+
+## Implementation Status
+
+**Last Updated:** 2025-10-25
+
+### Completed
+- [x] All data models and error types (src/nova/marketplace/models.py)
+- [x] MarketplaceConfig model (src/nova/marketplace/config.py)
+- [x] Config integration: marketplaces field in GlobalConfig, ProjectConfig, NovaConfig
+- [x] Config merger: concatenates marketplace lists across scopes
+- [x] Public API signatures defined (src/nova/marketplace/__init__.py)
+- [x] Source parser: parse source string → typed MarketplaceSource (src/nova/marketplace/sources.py)
+- [x] Fetcher: clone/download marketplaces (src/nova/marketplace/fetcher.py)
+- [x] Validator: validate marketplace.json (src/nova/marketplace/validator.py)
+- [x] State management: read/write marketplaces/data.json (src/nova/marketplace/datastore.py)
+- [x] Marketplace.add() implementation complete
+- [x] CLI commands: nova marketplace add (src/nova/cli/commands/marketplace.py)
+- [x] E2E tests: 4 user journey tests passing (tests/e2e/test_marketplace_cli.py)
+
+### Remaining
+- [ ] Implement remaining public API functions:
+  - [ ] remove() - not started
+  - [ ] list() - not started
+  - [ ] get() - not started
+- [ ] CLI commands for remaining operations:
+  - [ ] nova marketplace remove
+  - [ ] nova marketplace list
+  - [ ] nova marketplace show
+- [ ] Unit tests for remaining components
+- [ ] Documentation updates
+
+**Current Status:** `add` feature fully implemented with E2E test coverage. Ready to implement `remove`, `list`, and `get` operations.
 
 ## References
 

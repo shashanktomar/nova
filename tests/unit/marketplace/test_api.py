@@ -278,11 +278,6 @@ def test_move_to_data_directory_replaces_existing_directory(
     assert not temp_dir.exists()
 
 
-def test_remove_not_implemented(marketplace: Marketplace) -> None:
-    with pytest.raises(NotImplementedError):
-        marketplace.remove("name")
-
-
 def test_list_not_implemented(marketplace: Marketplace) -> None:
     with pytest.raises(NotImplementedError):
         marketplace.list()

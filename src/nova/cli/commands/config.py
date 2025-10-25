@@ -41,7 +41,7 @@ def show(
 ) -> None:
     selected_format = format.lower()
     store = FileConfigStore(
-        working_dir=working_dir or Path.cwd(),
+        working_dir=working_dir,
         settings=settings.to_config_store_settings(),
     )
     result = store.load()

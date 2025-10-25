@@ -31,3 +31,17 @@ class MarketplaceConfigProvider(Protocol):
     ) -> Result[None, MarketplaceError]:
         """Add marketplace configuration to specified scope."""
         ...
+
+    def remove_marketplace(
+        self,
+        name: str,
+        scope: MarketplaceScope | None = None,
+    ) -> Result[MarketplaceConfig, MarketplaceError]:
+        """Remove marketplace configuration by name.
+
+        If scope is provided, only remove from that scope.
+        If scope is None, remove from all scopes where found.
+
+        Returns the removed MarketplaceConfig.
+        """
+        ...

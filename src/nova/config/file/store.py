@@ -13,6 +13,7 @@ from nova.marketplace.models import (
     MarketplaceConfigLoadError,
     MarketplaceConfigSaveError,
     MarketplaceError,
+    MarketplaceNotFoundError,
     MarketplaceSource,
 )
 from nova.utils.functools.models import Err, Ok, Result, is_err
@@ -41,8 +42,8 @@ ScopeModelType = type[GlobalConfig] | type[ProjectConfig] | type[UserConfig]
 
 
 class FileConfigStore(ConfigStore):
-    def __init__(self, working_dir: Path, settings: ConfigStoreSettings) -> None:
-        self.working_dir = working_dir
+    def __init__(self, working_dir: Path | None, settings: ConfigStoreSettings) -> None:
+        self.working_dir = working_dir or Path.cwd()
         self.settings = settings
 
     def load(self) -> Result[NovaConfig, ConfigError]:
@@ -143,6 +144,91 @@ class FileConfigStore(ConfigStore):
             )
 
         return Ok(None)
+
+    def remove_marketplace(
+        self,
+        name: str,
+        scope: MarketplaceScope | None = None,
+    ) -> Result[MarketplaceConfig, MarketplaceError]:
+        """Remove marketplace configuration by name.
+
+        If scope is provided, only remove from that scope.
+        If scope is None, remove from all scopes where found.
+        """
+        if scope is not None:
+            return self._remove_from_scope(name, scope)
+
+        # Try removing from both scopes, return first success
+        for marketplace_scope in [MarketplaceScope.PROJECT, MarketplaceScope.GLOBAL]:
+            result = self._remove_from_scope(name, marketplace_scope)
+            if not is_err(result):
+                return result
+
+        return Err(
+            MarketplaceNotFoundError(
+                name_or_source=name,
+                message=f"Marketplace '{name}' not found in any scope",
+            )
+        )
+
+    def _remove_from_scope(
+        self,
+        name: str,
+        scope: MarketplaceScope,
+    ) -> Result[MarketplaceConfig, MarketplaceError]:
+        config_scope = ConfigScope.GLOBAL if scope == MarketplaceScope.GLOBAL else ConfigScope.PROJECT
+
+        result = self.load_scope(config_scope)
+        if is_err(result):
+            config_error = result.unwrap_err()
+            return Err(
+                MarketplaceConfigLoadError(
+                    scope=scope.value,
+                    message=f"Failed to load existing config: {config_error.message}",
+                )
+            )
+
+        existing_config = result.unwrap()
+
+        if existing_config is None or not existing_config.marketplaces:
+            return Err(
+                MarketplaceNotFoundError(
+                    name_or_source=name,
+                    message=f"Marketplace '{name}' not found in {scope.value} scope",
+                )
+            )
+
+        # Find the marketplace to remove
+        removed_config = None
+        remaining_marketplaces = []
+
+        for marketplace in existing_config.marketplaces:
+            if marketplace.name == name:
+                removed_config = marketplace
+            else:
+                remaining_marketplaces.append(marketplace.model_dump(mode="json"))
+
+        if removed_config is None:
+            return Err(
+                MarketplaceNotFoundError(
+                    name_or_source=name,
+                    message=f"Marketplace '{name}' not found in {scope.value} scope",
+                )
+            )
+
+        data = {"marketplaces": remaining_marketplaces}
+
+        write_result = self._write_scope_data(config_scope, data)
+        if is_err(write_result):
+            config_error = write_result.unwrap_err()
+            return Err(
+                MarketplaceConfigSaveError(
+                    scope=scope.value,
+                    message=f"Failed to write config: {config_error.message}",
+                )
+            )
+
+        return Ok(removed_config)
 
     def _get_config_path_for_scope(self, scope: ConfigScope) -> Path:
         paths = discover_config_paths(self.working_dir, self.settings)
