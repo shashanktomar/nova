@@ -57,8 +57,7 @@ def get_git_version() -> Result[str, GitError]:
             check=True,
         )
 
-        match = re.search(r"git version (\d+\.\d+\.\d+)", result.stdout)
-        if match:
+        if (match := re.search(r"git version (\d+\.\d+\.\d+)", result.stdout)):
             return Ok(match.group(1))
 
         return Err(GitVersionError(message=f"Could not parse git version from: {result.stdout}"))
