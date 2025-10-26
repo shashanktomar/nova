@@ -3,11 +3,11 @@ from __future__ import annotations
 import json
 
 from nova.marketplace.models import MarketplaceInvalidManifestError
-from nova.marketplace.validator import validate_marketplace
+from nova.marketplace.validator import load_and_validate_marketplace
 
 
 def test_validate_marketplace_returns_error_when_manifest_missing(tmp_path) -> None:
-    result = validate_marketplace(tmp_path)
+    result = load_and_validate_marketplace(tmp_path)
 
     assert result.is_err()
     error = result.unwrap_err()
@@ -19,7 +19,7 @@ def test_validate_marketplace_returns_error_for_invalid_json(tmp_path) -> None:
     manifest_path = tmp_path / "marketplace.json"
     manifest_path.write_text("{ invalid json }")
 
-    result = validate_marketplace(tmp_path)
+    result = load_and_validate_marketplace(tmp_path)
 
     assert result.is_err()
     error = result.unwrap_err()
@@ -33,7 +33,7 @@ def test_validate_marketplace_returns_error_for_missing_required_fields(
     manifest_path = tmp_path / "marketplace.json"
     manifest_path.write_text(json.dumps({"name": "test"}))
 
-    result = validate_marketplace(tmp_path)
+    result = load_and_validate_marketplace(tmp_path)
 
     assert result.is_err()
     error = result.unwrap_err()
@@ -59,7 +59,7 @@ def test_validate_marketplace_returns_ok_for_valid_manifest(tmp_path) -> None:
     }
     manifest_path.write_text(json.dumps(manifest_data))
 
-    result = validate_marketplace(tmp_path)
+    result = load_and_validate_marketplace(tmp_path)
 
     assert result.is_ok()
     manifest = result.unwrap()
@@ -74,7 +74,7 @@ def test_validate_marketplace_returns_error_when_file_not_readable(tmp_path) -> 
     manifest_path.chmod(0o000)
 
     try:
-        result = validate_marketplace(tmp_path)
+        result = load_and_validate_marketplace(tmp_path)
 
         assert result.is_err()
         error = result.unwrap_err()

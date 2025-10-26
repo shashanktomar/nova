@@ -129,7 +129,7 @@ def test_add_succeeds_for_remote_source(
 
     data_root = tmp_path / "data"
     mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(fake_temp))
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("remote")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("remote")))
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
     mocker.patch("nova.marketplace.api.get_data_directory_from_dirs", return_value=data_root)
 
@@ -162,7 +162,7 @@ def test_add_returns_existing_error_when_duplicate_found(
     config_provider.set_has_marketplace_result(Ok(True))
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
     mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(Path("/tmp")))
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("remote")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("remote")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -205,7 +205,7 @@ def test_add_skips_fetch_for_local_source(
 
     parse_mock = mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
     fetch_mock = mocker.patch("nova.marketplace.api.fetch_marketplace")
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("local")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("local")))
     move_mock = mocker.patch.object(
         marketplace,
         "_move_to_data_directory",
@@ -237,7 +237,7 @@ def test_add_returns_error_when_datastore_save_fails(
     source = LocalMarketplaceSource(type="local", path=temp_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("fail")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("fail")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -259,7 +259,7 @@ def test_add_returns_error_when_config_save_fails(
     source = LocalMarketplaceSource(type="local", path=temp_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("fail-config")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("fail-config")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -281,7 +281,7 @@ def test_add_propagates_config_provider_error(
     source = LocalMarketplaceSource(type="local", path=local_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.validate_marketplace", return_value=Ok(DummyManifest("local")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("local")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 

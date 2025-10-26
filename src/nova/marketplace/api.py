@@ -24,7 +24,6 @@ from .models import (
     MarketplaceAlreadyExistsError,
     MarketplaceError,
     MarketplaceInfo,
-    MarketplaceManifest,
     MarketplaceNotFoundError,
     MarketplaceScope,
     MarketplaceSource,
@@ -32,7 +31,7 @@ from .models import (
 )
 from .protocol import MarketplaceConfigProvider
 from .sources import parse_source
-from .validator import validate_marketplace
+from .validator import load_and_validate_marketplace
 
 logger = create_logger("marketplace")
 
@@ -149,13 +148,9 @@ class Marketplace:
         data: tuple[MarketplaceSource, Path],
     ) -> Result[tuple[MarketplaceSource, Path, str], MarketplaceError]:
         source, marketplace_dir = data
-        logger.debug("Validating marketplace", path=str(marketplace_dir))
-        log_validation_error = partial(self._log_validation_error, marketplace_dir)
 
         return (
-            validate_marketplace(marketplace_dir)
-            .inspect(self._log_validation_success)
-            .inspect_err(log_validation_error)
+            load_and_validate_marketplace(marketplace_dir)
             .map(lambda manifest: (source, marketplace_dir, manifest.name))
         )
 
@@ -461,9 +456,3 @@ class Marketplace:
 
     def _log_fetch_error(self, source: MarketplaceSource, error: MarketplaceError) -> None:
         logger.error("Failed to fetch marketplace", source=str(source), error=error.message)
-
-    def _log_validation_success(self, manifest: MarketplaceManifest) -> None:
-        logger.debug("Marketplace validated", name=manifest.name, bundles=len(manifest.bundles))
-
-    def _log_validation_error(self, marketplace_dir: Path, error: MarketplaceError) -> None:
-        logger.error("Marketplace validation failed", path=str(marketplace_dir), error=error.message)
