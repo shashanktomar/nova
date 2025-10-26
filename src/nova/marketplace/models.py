@@ -107,6 +107,15 @@ class MarketplaceManifest(BaseModel):
     owner: Contact
     bundles: list[BundleEntry]
 
+    def to_info(self, source: MarketplaceSource) -> MarketplaceInfo:
+        """Convert manifest to marketplace info."""
+        return MarketplaceInfo(
+            name=self.name,
+            description=self.description,
+            source=source,
+            bundle_count=len(self.bundles),
+        )
+
 
 class MarketplaceState(BaseModel):
     """Marketplace cloned state metadata stored in data.json."""
@@ -175,6 +184,11 @@ class MarketplaceConfigSaveError(BaseMarketplaceError):
 
     scope: str
 
+class MarketplaceInvalidStateError(BaseMarketplaceError):
+    """Marketplace state is invalid"""
+    
+    name: str
+
 
 MarketplaceError = (
     MarketplaceNotFoundError
@@ -185,6 +199,8 @@ MarketplaceError = (
     | MarketplaceFetchError
     | MarketplaceConfigLoadError
     | MarketplaceConfigSaveError
+    | MarketplaceConfigSaveError
+    | MarketplaceInvalidStateError
 )
 
 

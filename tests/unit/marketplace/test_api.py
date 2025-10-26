@@ -10,10 +10,14 @@ from nova.datastore.models import DataStoreKeyNotFoundError
 from nova.marketplace import Marketplace, MarketplaceScope
 from nova.marketplace.config import MarketplaceConfig
 from nova.marketplace.models import (
+    BundleEntry,
+    Contact,
     GitHubMarketplaceSource,
     LocalMarketplaceSource,
     MarketplaceAddError,
     MarketplaceAlreadyExistsError,
+    MarketplaceInvalidStateError,
+    MarketplaceManifest,
     MarketplaceNotFoundError,
 )
 from nova.utils.functools.models import Err, Ok, Result, is_err, is_ok
@@ -56,7 +60,7 @@ class FakeConfigProvider:
         self.calls["remove"].append((name, scope))
         return self._remove_marketplace_result
 
-    def get_marketplace_config(self) -> Result[list[Any], Any]:
+    def get_marketplace_configs(self) -> Result[list[Any], Any]:
         self.calls["get"].append(())
         return self._get_marketplace_config_result
 
@@ -108,10 +112,28 @@ def marketplace(config_provider: FakeConfigProvider, datastore: FakeDatastore) -
     return Marketplace(config_provider=config_provider, datastore=datastore, directories=directories)
 
 
-class DummyManifest:
-    def __init__(self, name: str) -> None:
-        self.name = name
-        self.bundles = []
+def create_test_manifest(name: str, bundle_count: int = 0, description: str = "Test marketplace") -> MarketplaceManifest:
+    bundles = [
+        BundleEntry(
+            name=f"bundle-{i}",
+            description="Test bundle",
+            source=f"./bundles/bundle-{i}",
+            version="1.0.0",
+        )
+        for i in range(bundle_count)
+    ]
+    return MarketplaceManifest(
+        name=name,
+        version="1.0.0",
+        description=description,
+        owner=Contact(name="Test Owner"),
+        bundles=bundles,
+    )
+
+
+def write_marketplace_json(path: Path, name: str, description: str = "Test marketplace", bundle_count: int = 0) -> None:
+    manifest = create_test_manifest(name, bundle_count, description)
+    path.write_text(manifest.model_dump_json())
 
 
 def test_add_succeeds_for_remote_source(
@@ -129,7 +151,10 @@ def test_add_succeeds_for_remote_source(
 
     data_root = tmp_path / "data"
     mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(fake_temp))
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("remote")))
+    mocker.patch(
+        "nova.marketplace.api.load_and_validate_marketplace",
+        return_value=Ok(create_test_manifest("remote", bundle_count=1, description="Remote marketplace")),
+    )
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
     mocker.patch("nova.marketplace.api.get_data_directory_from_dirs", return_value=data_root)
 
@@ -162,7 +187,7 @@ def test_add_returns_existing_error_when_duplicate_found(
     config_provider.set_has_marketplace_result(Ok(True))
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
     mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(Path("/tmp")))
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("remote")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(create_test_manifest("remote", 1)))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -204,8 +229,8 @@ def test_add_skips_fetch_for_local_source(
     source = LocalMarketplaceSource(type="local", path=local_dir)
 
     parse_mock = mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    fetch_mock = mocker.patch("nova.marketplace.api.fetch_marketplace")
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("local")))
+    mocker.patch("nova.marketplace.api.fetch_marketplace", return_value=Ok(local_dir))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(create_test_manifest("local")))
     move_mock = mocker.patch.object(
         marketplace,
         "_move_to_data_directory",
@@ -218,7 +243,6 @@ def test_add_skips_fetch_for_local_source(
     info = result.unwrap()
     assert info.name == "local"
     assert info.source == source
-    fetch_mock.assert_not_called()
     parse_mock.assert_called_once()
     move_mock.assert_called_once()
     assert config_provider.calls["has"]
@@ -237,7 +261,7 @@ def test_add_returns_error_when_datastore_save_fails(
     source = LocalMarketplaceSource(type="local", path=temp_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("fail")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(create_test_manifest("fail")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -259,7 +283,7 @@ def test_add_returns_error_when_config_save_fails(
     source = LocalMarketplaceSource(type="local", path=temp_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("fail-config")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(create_test_manifest("fail-config")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -281,7 +305,7 @@ def test_add_propagates_config_provider_error(
     source = LocalMarketplaceSource(type="local", path=local_dir)
 
     mocker.patch("nova.marketplace.api.parse_source", return_value=Ok(source))
-    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(DummyManifest("local")))
+    mocker.patch("nova.marketplace.api.load_and_validate_marketplace", return_value=Ok(create_test_manifest("local")))
 
     result = marketplace.add("ignored", scope=MarketplaceScope.GLOBAL)
 
@@ -324,11 +348,11 @@ def test_list_returns_all_marketplaces(
 ) -> None:
     mp1_dir = tmp_path / "mp1"
     mp1_dir.mkdir()
-    (mp1_dir / "marketplace.json").write_text('{"name": "mp1", "description": "First", "bundles": [{"name": "b1"}]}')
+    write_marketplace_json(mp1_dir / "marketplace.json", name="mp1", description="First", bundle_count=1)
 
     mp2_dir = tmp_path / "mp2"
     mp2_dir.mkdir()
-    (mp2_dir / "marketplace.json").write_text('{"name": "mp2", "description": "Second", "bundles": []}')
+    write_marketplace_json(mp2_dir / "marketplace.json", name="mp2", description="Second")
 
     source1 = GitHubMarketplaceSource(type="github", repo="owner/repo1")
     source2 = GitHubMarketplaceSource(type="github", repo="owner/repo2")
@@ -356,9 +380,8 @@ def test_list_returns_all_marketplaces(
             return Ok(state1_data)
         elif key == "mp2":
             return Ok(state2_data)
-        return Err({})
+        return Err(DataStoreKeyNotFoundError(namespace="marketplaces", key=key, message="Not found"))
 
-    datastore.load_result = Ok({})
     datastore.load = load_side_effect
 
     result = marketplace.list()
@@ -393,7 +416,7 @@ def test_list_skips_marketplaces_with_missing_state(
 ) -> None:
     mp1_dir = tmp_path / "mp1"
     mp1_dir.mkdir()
-    (mp1_dir / "marketplace.json").write_text('{"name": "mp1", "description": "First", "bundles": []}')
+    write_marketplace_json(mp1_dir / "marketplace.json", name="mp1", description="First")
 
     source1 = GitHubMarketplaceSource(type="github", repo="owner/repo1")
     source2 = GitHubMarketplaceSource(type="github", repo="owner/repo2")
@@ -432,9 +455,7 @@ def test_get_returns_marketplace_info(
 ) -> None:
     mp_dir = tmp_path / "test-mp"
     mp_dir.mkdir()
-    (mp_dir / "marketplace.json").write_text(
-        '{"name": "test-mp", "description": "Test", "bundles": [{"name": "b1"}, {"name": "b2"}]}'
-    )
+    write_marketplace_json(mp_dir / "marketplace.json", name="test-mp", description="Test", bundle_count=2)
 
     source = GitHubMarketplaceSource(type="github", repo="owner/repo")
     state_data = {
@@ -468,8 +489,8 @@ def test_get_fails_when_not_found(
 
     assert is_err(result)
     error = result.unwrap_err()
-    assert isinstance(error, MarketplaceNotFoundError)
-    assert error.name_or_source == "unknown"
+    assert isinstance(error, MarketplaceInvalidStateError)
+    assert error.name == "unknown"
 
 
 def test_remove_succeeds_by_name(

@@ -89,7 +89,7 @@ class FileConfigStore(ConfigStore):
 
         return Ok(NovaConfig.model_validate(config.model_dump()))
 
-    def get_marketplace_config(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
+    def get_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         """Get marketplace configuration from all scopes."""
         return (
             self.load()
@@ -106,7 +106,7 @@ class FileConfigStore(ConfigStore):
         source: MarketplaceSource,
     ) -> Result[bool, MarketplaceError]:
         return (
-            self.get_marketplace_config()
+            self.get_marketplace_configs()
             .map(lambda marketplaces: any(m.name == name or m.source == source for m in marketplaces))
         )
 

@@ -17,6 +17,7 @@ from nova.marketplace.models import (
     MarketplaceConfigSaveError,
     MarketplaceFetchError,
     MarketplaceInvalidManifestError,
+    MarketplaceInvalidStateError,
     MarketplaceNotFoundError,
     MarketplaceSourceParseError,
 )
@@ -161,7 +162,7 @@ def list_marketplaces(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    match marketplace.list(working_dir=working_dir):
+    match marketplace.list():
         case Ok(infos):
             if not infos:
                 typer.echo("No marketplaces configured.")
@@ -180,7 +181,6 @@ def list_marketplaces(
 @app.command("show")
 def show(
     name: Annotated[str, typer.Argument(help="Marketplace name")],
-    working_dir: WorkingDirOption = None,
 ) -> None:
     """Show details for a specific marketplace.
 
@@ -190,7 +190,6 @@ def show(
         nova marketplace show official-bundles
     """
     config_store = FileConfigStore(
-        working_dir=working_dir,
         settings=settings.to_config_store_settings(),
     )
 
@@ -198,7 +197,7 @@ def show(
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
     marketplace = Marketplace(config_store, datastore, directories)
 
-    match marketplace.get(name, working_dir=working_dir):
+    match marketplace.get(name):
         case Ok(info):
             bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
             typer.secho(f"{info.name}", fg=typer.colors.CYAN, bold=True)
@@ -227,6 +226,10 @@ def _handle_error(error: MarketplaceError) -> None:
             typer.secho("  - owner/repo (GitHub)", err=True)
             typer.secho("  - https://github.com/owner/repo.git (Git URL)", err=True)
             typer.secho("  - ./path/to/marketplace (local directory)", err=True)
+        case MarketplaceInvalidStateError(name=name, message=message):
+            typer.secho(f"error: marketplace '{name}' state is corrupted", err=True, fg=typer.colors.RED)
+            typer.secho(f"  {message}", err=True, fg=typer.colors.RED)
+            typer.secho("hint: this may be a bug, please report it", err=True, fg=typer.colors.CYAN)
         case MarketplaceInvalidManifestError(message=message):
             typer.secho(f"error: {message}", err=True, fg=typer.colors.RED)
             if "not found" in message.lower():

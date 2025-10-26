@@ -559,7 +559,7 @@ marketplaces:
     )
 
     store = FileConfigStore(working_dir=project_root, settings=TEST_SETTINGS)
-    result = store.get_marketplace_config()
+    result = store.get_marketplace_configs()
 
     assert is_ok(result)
     marketplaces = result.unwrap()
@@ -578,7 +578,7 @@ def test_get_marketplace_config_returns_empty_list_when_no_marketplaces(tmp_path
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
     store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
-    result = store.get_marketplace_config()
+    result = store.get_marketplace_configs()
 
     assert is_ok(result)
     marketplaces = result.unwrap()
@@ -594,7 +594,7 @@ def test_get_marketplace_config_propagates_config_errors(tmp_path: Path, monkeyp
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
 
     store = FileConfigStore(working_dir=tmp_path, settings=TEST_SETTINGS)
-    result = store.get_marketplace_config()
+    result = store.get_marketplace_configs()
 
     assert is_err(result)
     error = result.err_value

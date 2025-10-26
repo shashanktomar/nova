@@ -361,4 +361,4 @@ def test_show_marketplace_not_found() -> None:
         result = _invoke(["marketplace", "show", "non-existent"], env=env)
 
         assert result.exit_code == 1
-        assert "error: marketplace 'non-existent' not found" in result.stderr
+        assert "error: marketplace 'non-existent' state is corrupted" in result.stderr

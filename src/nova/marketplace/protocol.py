@@ -13,7 +13,7 @@ from .models import MarketplaceError, MarketplaceScope, MarketplaceSource
 class MarketplaceConfigProvider(Protocol):
     """Protocol for providing marketplace configuration."""
 
-    def get_marketplace_config(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
+    def get_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
         """Get marketplace configuration from all scopes."""
         ...
 
