@@ -294,8 +294,7 @@ def test_remove_marketplace_not_found() -> None:
         result = _invoke(["marketplace", "remove", "non-existent"], env=env)
 
         assert result.exit_code == 1
-        assert "error: marketplace 'non-existent' not found" in result.stderr
-        assert "hint: use 'nova marketplace list' to see available marketplaces" in result.stderr
+        assert "Marketplace 'non-existent' not found" in result.stderr
 
 
 def test_list_marketplaces() -> None:

@@ -11,10 +11,7 @@ from pydantic import ValidationError
 from nova.common import create_logger, get_global_config_root
 from nova.marketplace import MarketplaceConfig, MarketplaceScope
 from nova.marketplace.models import (
-    MarketplaceConfigLoadError,
-    MarketplaceConfigSaveError,
-    MarketplaceError,
-    MarketplaceNotFoundError,
+    MarketplaceConfigError,
     MarketplaceSource,
 )
 from nova.utils.functools.models import Err, Ok, Result, is_err
@@ -89,14 +86,16 @@ class FileConfigStore(ConfigStore):
 
         return Ok(NovaConfig.model_validate(config.model_dump()))
 
-    def get_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceError]:
+    def get_marketplace_configs(self) -> Result[list[MarketplaceConfig], MarketplaceConfigError]:
         """Get marketplace configuration from all scopes."""
         return (
             self.load()
-            .map_err(lambda config_error: MarketplaceConfigLoadError(
-                scope=config_error.scope.value,
-                message=f"Failed to load marketplace config: {config_error.message}",
-            ))
+            .map_err(
+                lambda config_error: MarketplaceConfigError(
+                    scope=config_error.scope.value,
+                    message=f"Failed to load marketplace config: {config_error.message}",
+                )
+            )
             .map(lambda config: config.marketplaces)
         )
 
@@ -104,26 +103,24 @@ class FileConfigStore(ConfigStore):
         self,
         name: str,
         source: MarketplaceSource,
-    ) -> Result[bool, MarketplaceError]:
-        return (
-            self.get_marketplace_configs()
-            .map(lambda marketplaces: any(m.name == name or m.source == source for m in marketplaces))
+    ) -> Result[bool, MarketplaceConfigError]:
+        return self.get_marketplace_configs().map(
+            lambda marketplaces: any(m.name == name or m.source == source for m in marketplaces)
         )
 
     def add_marketplace(
         self,
         config: MarketplaceConfig,
         scope: MarketplaceScope,
-    ) -> Result[None, MarketplaceError]:
+    ) -> Result[None, MarketplaceConfigError]:
         """Add marketplace configuration to specified scope."""
         config_scope = ConfigScope.GLOBAL if scope == MarketplaceScope.GLOBAL else ConfigScope.PROJECT
 
-        load_result = (
-            self.load_scope(config_scope)
-            .map_err(lambda config_error: MarketplaceConfigLoadError(
+        load_result = self.load_scope(config_scope).map_err(
+            lambda config_error: MarketplaceConfigError(
                 scope=scope.value,
                 message=f"Failed to load existing config: {config_error.message}",
-            ))
+            )
         )
         if is_err(load_result):
             return load_result
@@ -138,19 +135,18 @@ class FileConfigStore(ConfigStore):
 
         data = {"marketplaces": marketplaces}
 
-        return (
-            self._write_scope_data(config_scope, data)
-            .map_err(lambda config_error: MarketplaceConfigSaveError(
+        return self._write_scope_data(config_scope, data).map_err(
+            lambda config_error: MarketplaceConfigError(
                 scope=scope.value,
                 message=f"Failed to write config: {config_error.message}",
-            ))
+            )
         )
 
     def remove_marketplace(
         self,
         name: str,
         scope: MarketplaceScope | None = None,
-    ) -> Result[MarketplaceConfig, MarketplaceError]:
+    ) -> Result[MarketplaceConfig, MarketplaceConfigError]:
         """Remove marketplace configuration by name.
 
         If scope is provided, only remove from that scope.
@@ -166,8 +162,8 @@ class FileConfigStore(ConfigStore):
                 return result
 
         return Err(
-            MarketplaceNotFoundError(
-                name_or_source=name,
+            MarketplaceConfigError(
+                scope=scope,
                 message=f"Marketplace '{name}' not found in any scope",
             )
         )
@@ -176,55 +172,50 @@ class FileConfigStore(ConfigStore):
         self,
         name: str,
         scope: MarketplaceScope,
-    ) -> Result[MarketplaceConfig, MarketplaceError]:
-        config_scope = (
-            ConfigScope.GLOBAL
-            if scope == MarketplaceScope.GLOBAL
-            else ConfigScope.PROJECT
-        )
+    ) -> Result[MarketplaceConfig, MarketplaceConfigError]:
+        config_scope = ConfigScope.GLOBAL if scope == MarketplaceScope.GLOBAL else ConfigScope.PROJECT
 
-        load_result = (
-            self.load_scope(config_scope)
-            .map_err(lambda err: MarketplaceConfigLoadError(
-                scope=scope.value,
+        load_result = self.load_scope(config_scope).map_err(
+            lambda err: MarketplaceConfigError(
+                scope=scope,
                 message=f"Failed to load existing config: {err.message}",
-            ))
+            )
         )
         if is_err(load_result):
             return load_result
 
         config = load_result.unwrap()
         if not (config and config.marketplaces):
-            return Err(MarketplaceNotFoundError(
-                name_or_source=name,
-                message=f"Marketplace '{name}' not found in {scope.value} scope",
-            ))
+            return Err(
+                MarketplaceConfigError(
+                    scope=scope,
+                    message=f"Marketplace '{name}' not found in {scope.value} scope",
+                )
+            )
 
         index = next(
             (i for i, m in enumerate(config.marketplaces) if m.name == name),
             None,
         )
         if index is None:
-            return Err(MarketplaceNotFoundError(
-                name_or_source=name,
-                message=f"Marketplace '{name}' not found in {scope.value} scope",
-            ))
+            return Err(
+                MarketplaceConfigError(
+                    scope=scope,
+                    message=f"Marketplace '{name}' not found in {scope.value} scope",
+                )
+            )
 
         removed = config.marketplaces[index]
-        data = {
-            "marketplaces": [
-                m.model_dump(mode="json")
-                for i, m in enumerate(config.marketplaces)
-                if i != index
-            ]
-        }
+        data = {"marketplaces": [m.model_dump(mode="json") for i, m in enumerate(config.marketplaces) if i != index]}
 
         return (
             self._write_scope_data(config_scope, data)
-            .map_err(lambda err: MarketplaceConfigSaveError(
-                scope=scope.value,
-                message=f"Failed to write config: {err.message}",
-            ))
+            .map_err(
+                lambda err: MarketplaceConfigError(
+                    scope=scope.value,
+                    message=f"Failed to write config: {err.message}",
+                )
+            )
             .map(lambda _: removed)
         )
 

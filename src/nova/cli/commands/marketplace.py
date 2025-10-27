@@ -13,14 +13,14 @@ from nova.marketplace import Marketplace, MarketplaceError, MarketplaceScope
 from nova.marketplace.models import (
     MarketplaceAddError,
     MarketplaceAlreadyExistsError,
-    MarketplaceConfigLoadError,
-    MarketplaceConfigSaveError,
+    MarketplaceConfigError,
     MarketplaceFetchError,
     MarketplaceInvalidManifestError,
-    MarketplaceInvalidStateError,
     MarketplaceNotFoundError,
     MarketplaceSourceParseError,
+    MarketplaceStateError,
 )
+from nova.marketplace.store import MarketplaceStore
 from nova.settings import settings
 from nova.utils.functools.models import Err, Ok
 
@@ -92,14 +92,14 @@ def add(
 
     directories = settings.to_app_directories()
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
-    marketplace = Marketplace(config_store, datastore, directories)
+    store = MarketplaceStore(datastore)
+    marketplace = Marketplace(config_store, store, directories)
 
     match marketplace.add(source, scope=scope, working_dir=working_dir):
         case Ok(info):
             bundle_text = "bundle" if info.bundle_count == 1 else "bundles"
             typer.secho(
-                f"✓ Added '{info.name}' with {info.bundle_count} {bundle_text} ({scope.value})",
-                fg=typer.colors.GREEN
+                f"✓ Added '{info.name}' with {info.bundle_count} {bundle_text} ({scope.value})", fg=typer.colors.GREEN
             )
         case Err(error):
             _handle_error(error)
@@ -132,11 +132,12 @@ def remove(
 
     directories = settings.to_app_directories()
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
-    marketplace = Marketplace(config_store, datastore, directories)
+    store = MarketplaceStore(datastore)
+    marketplace = Marketplace(config_store, store, directories)
 
     match marketplace.remove(name_or_source, scope=scope, working_dir=working_dir):
-        case Ok(info):
-            typer.secho(f"✓ Removed '{info.name}'", fg=typer.colors.GREEN)
+        case Ok(name):
+            typer.secho(f"✓ Removed '{name}'", fg=typer.colors.GREEN)
         case Err(error):
             _handle_error(error)
             raise typer.Exit(code=1)
@@ -160,7 +161,8 @@ def list_marketplaces(
 
     directories = settings.to_app_directories()
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
-    marketplace = Marketplace(config_store, datastore, directories)
+    store = MarketplaceStore(datastore)
+    marketplace = Marketplace(config_store, store, directories)
 
     match marketplace.list():
         case Ok(infos):
@@ -195,7 +197,8 @@ def show(
 
     directories = settings.to_app_directories()
     datastore = FileDataStore(namespace="marketplaces", directories=directories)
-    marketplace = Marketplace(config_store, datastore, directories)
+    store = MarketplaceStore(datastore)
+    marketplace = Marketplace(config_store, store, directories)
 
     match marketplace.get(name):
         case Ok(info):
@@ -226,7 +229,7 @@ def _handle_error(error: MarketplaceError) -> None:
             typer.secho("  - owner/repo (GitHub)", err=True)
             typer.secho("  - https://github.com/owner/repo.git (Git URL)", err=True)
             typer.secho("  - ./path/to/marketplace (local directory)", err=True)
-        case MarketplaceInvalidStateError(name=name, message=message):
+        case MarketplaceStateError(name=name, message=message):
             typer.secho(f"error: marketplace '{name}' state is corrupted", err=True, fg=typer.colors.RED)
             typer.secho(f"  {message}", err=True, fg=typer.colors.RED)
             typer.secho("hint: this may be a bug, please report it", err=True, fg=typer.colors.CYAN)
@@ -249,10 +252,7 @@ def _handle_error(error: MarketplaceError) -> None:
         case MarketplaceAddError(message=message):
             typer.secho("error: failed to add marketplace", err=True, fg=typer.colors.RED)
             typer.secho(f"  {message}", err=True)
-        case (
-            MarketplaceConfigLoadError(scope=scope, message=message)
-            | MarketplaceConfigSaveError(scope=scope, message=message)
-        ):
+        case MarketplaceConfigError(scope=scope, message=message):
             typer.secho(f"error: configuration {scope} failed", err=True, fg=typer.colors.RED)
             typer.secho(f"  {message}", err=True)
         case _:  # pragma: no cover - fallback for unexpected subclasses

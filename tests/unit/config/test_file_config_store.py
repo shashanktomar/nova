@@ -20,9 +20,7 @@ from nova.config.models import (
 from nova.marketplace import MarketplaceConfig, MarketplaceScope
 from nova.marketplace.models import (
     GitHubMarketplaceSource,
-    MarketplaceConfigLoadError,
-    MarketplaceConfigSaveError,
-    MarketplaceNotFoundError,
+    MarketplaceConfigError,
 )
 from nova.utils.functools.models import Err, is_err, is_ok
 
@@ -598,7 +596,7 @@ def test_get_marketplace_config_propagates_config_errors(tmp_path: Path, monkeyp
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigLoadError)
+    assert isinstance(error, MarketplaceConfigError)
     assert error.scope == "global"
 
 
@@ -708,7 +706,7 @@ def test_has_marketplace_propagates_config_errors(tmp_path: Path, monkeypatch) -
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigLoadError)
+    assert isinstance(error, MarketplaceConfigError)
 
 
 def test_load_scope_returns_global_config(tmp_path: Path, monkeypatch) -> None:
@@ -964,7 +962,7 @@ def test_add_marketplace_propagates_load_errors(tmp_path: Path, monkeypatch) -> 
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigLoadError)
+    assert isinstance(error, MarketplaceConfigError)
 
 
 def test_add_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch) -> None:
@@ -992,7 +990,7 @@ def test_add_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch) ->
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigSaveError)
+    assert isinstance(error, MarketplaceConfigError)
 
 
 def test_remove_marketplace_removes_entry_from_global_scope(tmp_path: Path, monkeypatch) -> None:
@@ -1054,8 +1052,8 @@ def test_remove_marketplace_returns_not_found_when_missing(tmp_path: Path, monke
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceNotFoundError)
-    assert error.name_or_source == "missing"
+    assert isinstance(error, MarketplaceConfigError)
+    assert "missing" in error.message
 
 
 def test_remove_marketplace_propagates_load_errors(tmp_path: Path, monkeypatch) -> None:
@@ -1077,7 +1075,7 @@ def test_remove_marketplace_propagates_load_errors(tmp_path: Path, monkeypatch) 
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigLoadError)
+    assert isinstance(error, MarketplaceConfigError)
     assert error.scope == MarketplaceScope.GLOBAL.value
 
 
@@ -1109,5 +1107,5 @@ def test_remove_marketplace_propagates_write_errors(tmp_path: Path, monkeypatch)
 
     assert is_err(result)
     error = result.err_value
-    assert isinstance(error, MarketplaceConfigSaveError)
+    assert isinstance(error, MarketplaceConfigError)
     assert error.scope == MarketplaceScope.GLOBAL.value

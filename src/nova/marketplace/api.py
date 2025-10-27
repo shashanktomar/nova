@@ -3,37 +3,33 @@
 from __future__ import annotations
 
 import json
-import shutil
 import tempfile
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 from typing import NamedTuple
 
 from nova.common import AppDirectories, create_logger, get_data_directory_from_dirs
-from nova.datastore import DataStore
-from nova.datastore.models import DataStoreKeyNotFoundError
 from nova.utils.functools.models import Err, Ok, Result, is_err
 
 from .config import MarketplaceConfig
-from .fetcher import fetch_marketplace
 from .models import (
-    LocalMarketplaceSource,
     MarketplaceAddError,
     MarketplaceAlreadyExistsError,
     MarketplaceError,
     MarketplaceInfo,
-    MarketplaceInvalidStateError,
     MarketplaceManifest,
     MarketplaceNotFoundError,
     MarketplaceScope,
     MarketplaceSource,
     MarketplaceState,
+    MarketplaceStateError,
 )
 from .protocol import MarketplaceConfigProvider
-from .sources import parse_source
+from .sources import create_source_provider, parse_source
+from .store import MarketplaceStore
 from .validator import load_and_validate_marketplace
 
 logger = create_logger("marketplace")
@@ -49,11 +45,11 @@ class _RemovalContext:
     info: MarketplaceInfo | None = None
 
 
-
 class _ValidatedMarketplace(NamedTuple):
     path: Path
     source: MarketplaceSource
     manifest: MarketplaceManifest
+
 
 class Marketplace:
     """Marketplace management API."""
@@ -61,11 +57,11 @@ class Marketplace:
     def __init__(
         self,
         config_provider: MarketplaceConfigProvider,
-        datastore: DataStore,
+        store: MarketplaceStore,
         directories: AppDirectories,
     ) -> None:
         self._config_provider = config_provider
-        self._datastore = datastore
+        self._store = store
         self._directories = directories
 
     def add(
@@ -99,20 +95,23 @@ class Marketplace:
         *,
         scope: MarketplaceScope | None = None,
         working_dir: Path | None = None,
-    ) -> Result[MarketplaceInfo, MarketplaceError]:
+    ) -> Result[str, MarketplaceError]:
         """Remove a marketplace by name or source."""
         logger.info("Removing marketplace", name_or_source=name_or_source, scope=scope.value if scope else "any")
 
-        remove_from_scope = partial(self._remove_from_config, scope=scope)
+        name_result = self._resolve_marketplace_name(name_or_source, working_dir)
+        if is_err(name_result):
+            return name_result
+
+        name = name_result.unwrap()
         log_remove_error = partial(self._log_remove_error, name_or_source)
 
         return (
-            self._resolve_marketplace_name(name_or_source, working_dir)
-            .and_then(remove_from_scope)
-            .and_then(self._load_state_and_info)
-            .and_then(self._delete_state_if_present)
-            .and_then(self._cleanup_directory_if_present)
-            .map(self._finalize_info)
+            self._config_provider.remove_marketplace(name, scope)
+            .and_then(lambda _: self._delete_state(name))
+            .and_then(self._cleanup_directory)
+            .map(lambda state: state.name)
+            .or_else(lambda error: self._handle_state_not_found(name, error))
             .inspect(self._log_remove_success)
             .inspect_err(log_remove_error)
         )
@@ -126,15 +125,14 @@ class Marketplace:
         name: str,
     ) -> Result[MarketplaceInfo, MarketplaceError]:
         """Get details for a specific marketplace."""
-        state_result = self._state_for_manifest(name)
+        state_result = self._get_state(name)
 
         if is_err(state_result):
             return state_result
 
         state = state_result.unwrap()
-        return (
-            load_and_validate_marketplace(state.install_location)
-            .map(lambda manifest: manifest.to_info(state.source))
+        return load_and_validate_marketplace(state.install_location).map(
+            lambda manifest: manifest.to_info(state.source)
         )
 
     def _fetch_marketplace_to_temp(
@@ -142,7 +140,7 @@ class Marketplace:
         source: MarketplaceSource,
     ) -> Result[tuple[Path, MarketplaceSource], MarketplaceError]:
         temp_base = Path(tempfile.gettempdir()) / f"nova-marketplace-{uuid.uuid4().hex}"
-        return fetch_marketplace(source, temp_base).map(lambda path: (path, source))
+        return create_source_provider(source).fetch(temp_base).map(lambda path: (path, source))
 
     def _validate_and_extract_manifest(
         self,
@@ -154,7 +152,7 @@ class Marketplace:
     def _check_for_duplicate(
         self,
         data: _ValidatedMarketplace,
-    )-> Result[_ValidatedMarketplace, MarketplaceError]:
+    ) -> Result[_ValidatedMarketplace, MarketplaceError]:
         name = data.manifest.name
         source = data.source
 
@@ -195,14 +193,7 @@ class Marketplace:
             last_updated=datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         )
 
-        return (
-            self._datastore.save(manifest.name, state.model_dump(mode="json"))
-            .map_err(lambda error: MarketplaceAddError(
-                source=str(source),
-                message=f"Failed to save marketplace state: {error.message}",
-            ))
-            .map(lambda _: data)
-        )
+        return self._store.save(state).map(lambda _: data)
 
     def _save_to_config(
         self,
@@ -215,10 +206,12 @@ class Marketplace:
 
         return (
             self._config_provider.add_marketplace(config, scope)
-            .map_err(lambda error: MarketplaceAddError(
-                source=str(source),
-                message=f"Failed to save marketplace config: {error.message}",
-            ))
+            .map_err(
+                lambda error: MarketplaceAddError(
+                    source=str(source),
+                    message=f"Failed to save marketplace config: {error.message}",
+                )
+            )
             .map(lambda _: data)
         )
 
@@ -228,98 +221,17 @@ class Marketplace:
         temp_dir: Path,
         marketplace_name: str,
     ) -> Path:
-        if isinstance(marketplace_source, LocalMarketplaceSource):
-            return temp_dir
-
         data_dir = get_data_directory_from_dirs(self._directories)
         marketplaces_dir = data_dir / "marketplaces"
         final_location = marketplaces_dir / marketplace_name
 
-        marketplaces_dir.mkdir(parents=True, exist_ok=True)
+        provider = create_source_provider(marketplace_source)
+        return provider.move_to_storage(temp_dir, final_location)
 
-        if final_location.exists():
-            shutil.rmtree(final_location)
-
-        shutil.move(str(temp_dir), str(final_location))
-
-        return final_location
-
-    def _remove_from_config(
-        self,
-        name: str,
-        scope: MarketplaceScope | None,
-    ) -> Result[_RemovalContext, MarketplaceError]:
-        return self._config_provider.remove_marketplace(name, scope).map(
-            lambda config: _RemovalContext(name=name, config=config)
-        )
-
-    def _load_state_and_info(
-        self,
-        context: _RemovalContext,
-    ) -> Result[_RemovalContext, MarketplaceError]:
-        load_result = self._datastore.load(context.name)
-        if is_err(load_result):
-            error = load_result.unwrap_err()
-            if isinstance(error, DataStoreKeyNotFoundError):
-                logger.warning(
-                    "Marketplace state missing during removal; proceeding with config cleanup",
-                    name=context.name,
-                )
-                return Ok(
-                    replace(
-                        context,
-                        state=None,
-                        info=context.info or self._build_info_from_config(context.config),
-                    )
-                )
-
-            return Err(
-                MarketplaceAddError(
-                    source=str(context.config.source),
-                    message=f"Failed to load marketplace state: {error.message}",
-                )
-            )
-
-        state_data = load_result.unwrap()
-        state = MarketplaceState.model_validate(state_data)
-
-        return self._attach_marketplace_info(state).map(
-            lambda data: replace(context, state=data[0], info=data[1])
-        )
-
-    def _delete_state_if_present(
-        self,
-        context: _RemovalContext,
-    ) -> Result[_RemovalContext, MarketplaceError]:
-        if context.state is None:
-            return Ok(context)
-
-        return (
-            self._datastore.delete(context.name)
-            .map_err(lambda error: MarketplaceAddError(
-                source=str(context.config.source),
-                message=f"Failed to delete marketplace state: {error.message}",
-            ))
-            .map(lambda _: context)
-        )
-
-    def _cleanup_directory_if_present(
-        self,
-        context: _RemovalContext,
-    ) -> Result[_RemovalContext, MarketplaceError]:
-        state = context.state
-        if state is None or isinstance(state.source, LocalMarketplaceSource):
-            return Ok(context)
-
-        if state.install_location.exists():
-            shutil.rmtree(state.install_location)
-
-        return Ok(context)
-
-    def _finalize_info(self, context: _RemovalContext) -> MarketplaceInfo:
-        if context.info is not None:
-            return context.info
-        return self._build_info_from_config(context.config)
+    def _cleanup_directory(self, state: MarketplaceState) -> Result[MarketplaceState, MarketplaceError]:
+        provider = create_source_provider(state.source)
+        provider.cleanup_on_removal(state.install_location)
+        return Ok(state)
 
     def _build_info_from_config(self, config: MarketplaceConfig) -> MarketplaceInfo:
         return MarketplaceInfo(
@@ -377,26 +289,13 @@ class Marketplace:
 
         return Ok((state, info))
 
-    def _load_marketplace_state(
-        self,
-        name: str,
-    ) -> Result[MarketplaceState, MarketplaceError]:
-        return (
-            self._datastore.load(name)
-            .map_err(lambda _: MarketplaceNotFoundError(
-                name_or_source=name,
-                message=f"Marketplace '{name}' state not found",
-            ))
-            .map(lambda state_data: MarketplaceState.model_validate(state_data))
-        )
-
     def _build_marketplace_infos_from_configs(
         self,
         configs: list[MarketplaceConfig],
     ) -> list[MarketplaceInfo]:
         infos: list[MarketplaceInfo] = []
         for config in configs:
-            state_result = self._state_for_manifest(config.name)
+            state_result = self._get_state(config.name)
             if is_err(state_result):
                 error = state_result.unwrap_err()
                 logger.warning("Skipping marketplace due to state error", name=config.name, error=error.message)
@@ -415,17 +314,25 @@ class Marketplace:
 
         return infos
 
-    def _state_for_manifest(self, name: str) -> Result[MarketplaceState, MarketplaceInvalidStateError]:
-        return (
-            self._datastore.load(name)
-            .map(lambda state_data: MarketplaceState.model_validate(state_data))
-            .map_err(
-                lambda error: MarketplaceInvalidStateError(
-                    name=name, message=f"Marketplace state load error: {error.message}"
-                )
-            )
-        )
+    def _get_state(self, name: str) -> Result[MarketplaceState, MarketplaceStateError]:
+        return self._store.load(name)
 
+    def _delete_state(
+        self,
+        name: str,
+    ) -> Result[MarketplaceState, MarketplaceStateError]:
+        state_result = self._store.load(name)
+        if is_err(state_result):
+            return state_result
+
+        state = state_result.unwrap()
+        return self._store.delete(name).map(lambda _: state)
+
+    def _handle_state_not_found(self, name: str, error: MarketplaceError) -> Result[str, MarketplaceError]:
+        if isinstance(error, MarketplaceStateError):
+            logger.warning("Marketplace state not found, skipping cleanup", name=name)
+            return Ok(name)
+        return Err(error)
 
     def _log_add_success(self, info: MarketplaceInfo) -> None:
         logger.success("Marketplace added", name=info.name, bundles=info.bundle_count)
@@ -433,8 +340,8 @@ class Marketplace:
     def _log_add_error(self, source: str, error: MarketplaceError) -> None:
         logger.error("Failed to add marketplace", source=source, error=error.message)
 
-    def _log_remove_success(self, info: MarketplaceInfo) -> None:
-        logger.success("Marketplace removed", name=info.name)
+    def _log_remove_success(self, name: str) -> None:
+        logger.success("Marketplace removed", name=name)
 
     def _log_remove_error(self, name_or_source: str, error: MarketplaceError) -> None:
         logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=error.message)
