@@ -98,23 +98,30 @@ class Marketplace:
     ) -> Result[str, MarketplaceError]:
         """Remove a marketplace by name or source."""
         logger.info("Removing marketplace", name_or_source=name_or_source, scope=scope.value if scope else "any")
+        remove_from_config = partial(self._config_provider.remove_marketplace, scope=scope)
 
-        name_result = self._resolve_marketplace_name(name_or_source, working_dir)
-        if is_err(name_result):
-            return name_result
-
-        name = name_result.unwrap()
-        log_remove_error = partial(self._log_remove_error, name_or_source)
-
-        return (
-            self._config_provider.remove_marketplace(name, scope)
-            .and_then(lambda _: self._delete_state(name))
+        cleanup_result = (
+            self._resolve_marketplace_name(name_or_source, working_dir)
+            .and_then(remove_from_config)
+            .map(lambda config: config.name)
+            .and_then(self._delete_state)
             .and_then(self._cleanup_directory)
-            .map(lambda state: state.name)
-            .or_else(lambda error: self._handle_state_not_found(name, error))
-            .inspect(self._log_remove_success)
-            .inspect_err(log_remove_error)
         )
+
+        match cleanup_result:
+            case Ok(state):
+                logger.success("Marketplace removed", name=state.name)
+                return Ok(state.name)
+            case Err(err):
+                if isinstance(err, MarketplaceStateError):
+                    logger.warning(
+                        "Marketplace state not found but marketplace is removed from config",
+                        name=err.name,
+                        error=err.message,
+                    )
+                    return Ok(err.name)
+                logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=err.message)
+                return Err(err)
 
     def list(self) -> Result[list[MarketplaceInfo], MarketplaceError]:
         """List all configured marketplaces."""
@@ -339,9 +346,3 @@ class Marketplace:
 
     def _log_add_error(self, source: str, error: MarketplaceError) -> None:
         logger.error("Failed to add marketplace", source=source, error=error.message)
-
-    def _log_remove_success(self, name: str) -> None:
-        logger.success("Marketplace removed", name=name)
-
-    def _log_remove_error(self, name_or_source: str, error: MarketplaceError) -> None:
-        logger.error("Failed to remove marketplace", name_or_source=name_or_source, error=error.message)
